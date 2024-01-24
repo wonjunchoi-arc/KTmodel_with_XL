@@ -181,7 +181,7 @@ def make_dataset(args):
         
         tf.data.experimental.save(train_dataset, args.tf_data_dir+'/{}'.format(args.mode)+'/train')
         tf.data.experimental.save(test_dataset, args.tf_data_dir+'/{}'.format(args.mode)+'/test')
-        with open(args.tf_data_dir+"dkeyid2idx.pkl", "wb") as file:
+        with open(args.tf_data_dir+"/dkeyid2idx.pkl", "wb") as file:
             pickle.dump(dkeyid2idx, file)
             
         print('Making Tf.dataset is complited')
