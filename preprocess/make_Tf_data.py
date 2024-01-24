@@ -194,7 +194,7 @@ parser.add_argument('--tgt_len', type=int, required=True, default=140)
 parser.add_argument('--eos_token', type=int, required=False, default=2, help='End of stream token id.')
 parser.add_argument('--mask_token', type=int, required=False, default=3)
 parser.add_argument('--test_ratio', type=float, required=False, default=0.2)
-parser.add_argument('--tf_data_dir', type=str, required=False, default='/home/jun/workspace/KT/data/ednet/TF_DATA')
+parser.add_argument('--tf_data_dir', type=str, required=True, default='/home/jun/workspace/KT/data/ednet/TF_DATA')
 parser.add_argument('--mode', type=str, required=True, default='concepts', help="concepts or questions")
 
 args = parser.parse_args()
