@@ -6,7 +6,7 @@ Create a column such as user_id, timestamp, question_id, concepts, responses, an
 
 After that, load the txt file and create a TF.DATASET to use as an input for the model, and train, test, and report.
 
-'''c
+'''
 1. Install the requirements
 2. Download/Prepare the dataset
 3. Train and test transfor_xl mlm model
@@ -41,7 +41,7 @@ content/question.csv
 |  |  |  |  |  |  |  |  |
 
 
-'''c
+'''
 KT1 Data(u{}.csv, content/question.csv) -> data.txt
 
 Python preprocess/make_txt.py —read_folder {Path to the parent folder containing KT1/u{}.csv, content/quest.csv}  —name_txt {txt file name you want to save}
@@ -57,7 +57,7 @@ Load the txt file and create individual Tf.dataset (train, test) based on concep
 
 In addition, concepts (12_42) made of train, test split/tag, etc. are separated into individual elements and even mapping functions.
 
-'''c
+'''
 python preprocess/make_Tf_data.py --data {Path to txt.py} --batch_size --tgt_len --mode {concepts or questions} --tf_data_dir {Where you want to save it}
 '''
 
@@ -65,7 +65,7 @@ python preprocess/make_Tf_data.py --data {Path to txt.py} --batch_size --tgt_len
 
 
 ## train_args.py
-'''c
+'''
 CUDA_VISIBLE_DEVICES=0 python train.py --mem_len 200 --batch_size 65 --tgt_len 140 --epoch 3 --mode {If you created concepts dataset, enter concepts mode}
 '''
 
