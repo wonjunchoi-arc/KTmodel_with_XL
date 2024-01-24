@@ -1,0 +1,6 @@
+data/
+logs/
+save_model/
+pykttoolkit/
+migrations/
+total.csv
