@@ -65,6 +65,6 @@ In addition, concepts (12_42) made of train, test split/tag, etc. are separated 
 
 ## train_args.py
 
-> CUDA_VISIBLE_DEVICES=0 python train.py --mem_len 200 --batch_size 65 --tgt_len 140 --epoch 3 --mode {If you created concepts dataset, enter concepts mode}
+> CUDA_VISIBLE_DEVICES=0 python train_args.py --tf_data_dir {path to your Tf.dataset dir} --mem_len 200 --batch_size 65 --tgt_len 140 --epoch 3 --mode {If you created concepts dataset, enter concepts mode}
 
 

@@ -1,5 +1,5 @@
 import os
-import json
+import pickle
 import tensorflow as tf
 import time
 from models.model_for_kt import TFTransfoXLModel,TFTransfoXLLMHeadModel,TFTransfoXLMLMHeadModel
@@ -29,7 +29,7 @@ parser.add_argument('--Q_vocab_size', type=int, required=False, default=12277, h
 parser.add_argument('--R_vocab_size', type=int, required=False, default=2)
 parser.add_argument('--epoch', type=int, required=True, default=3)
 parser.add_argument('--mode', type=str, required=True, default='concepts',help='concepts or questions')
-parser.add_argument('--tf_data_dir', type=str, required=False, default='/home/jun/workspace/KT/data/ednet/TF_DATA')
+parser.add_argument('--tf_data_dir', type=str, required=True, default='/home/jun/workspace/KT/data/ednet/TF_DATA')
 parser.add_argument('--tensorboard_log_dir', type=str, required=False, default='/home/jun/workspace/KT/logs/gradient_tape/')
 parser.add_argument('--tensorboard_emb_log_dir', type=str, required=False, default='/home/jun/workspace/KT/logs/embedding/',help='tensorboard embedding projection dictionary')
 parser.add_argument('--model_save_dir', type=str, required=False, default='/home/jun/workspace/KT/save_model/')
@@ -64,12 +64,12 @@ config_xl = TransfoXLConfig(
 # tf_train_dir = args.tf_data_dir+'/{}'.format(args.mode) +'/train'
 # tf_test_dir = args.tf_data_dir+'/{}'.format(args.mode) +'/test'
 
-tf_train_dir = config_xl.tf_data_dir+'/train'
-tf_test_dir = config_xl.tf_data_dir+'/test'
+tf_train_dir = config_xl.tf_data_dir+'/{}'.format(config_xl.mode)+'/train'
+tf_test_dir = config_xl.tf_data_dir+'/{}'.format(config_xl.mode)+'/test'
 train_dataset = tf.data.experimental.load(tf_train_dir)
 test_dataset = tf.data.experimental.load(tf_test_dir)
-with open(config_xl.tf_data_dir+"/keyid2idx.json", "r") as file:
-    dkeyid2idx = json.load(file) 
+with open(config_xl.tf_data_dir+"/dkeyid2idx.pkl", "rb") as file:
+    dkeyid2idx = pickle.load(file) 
 
 
 #tensorboard logdir
@@ -155,11 +155,11 @@ def evaluate(model, mems, test_dataset):
     evaluation_metrics = []
     
 
-    # for test_input_data, test_mask, test_labels in test_dataset:
+    for test_input_data, test_mask, test_labels in tqdm(test_dataset, desc='eval'):
     #     outputs = model(concepts=test_input_data, responses=test_mask, labels=test_labels, mems=mems, training=False)
-    for test_question,test_ceq, test_mask, test_labels in test_dataset:
-        input_test_data = test_ceq if config_xl.mode == 'concepts' else test_question
-        outputs = model(concepts=input_test_data, responses=test_mask, labels=test_labels, mems=mems, training=False)
+    # for test_question,test_ceq, test_mask, test_labels in test_dataset:
+    #     test_input_data = test_ceq if config_xl.mode == 'concepts' else test_question
+        outputs = model(concepts=test_input_data, responses=test_mask, labels=test_labels, mems=mems, training=False)
         loss = outputs.loss
         mems = outputs.mems
 
@@ -221,10 +221,10 @@ for epoch in range(config_xl.epoch):
     total_loss = 0.0
     mems = None              # 첫 번째 모델의 메모리 상태           
     
-    # for input_data, mask, labels in tqdm(train_dataset):
-    #     mems, loss_value = train_step(model, input_data,mask, labels, mems, optimizer)
-    for question,ceq, mask, labels in tqdm(train_dataset):
-        input_data = ceq if config_xl.mode == 'concepts' else question
+    for input_data, mask, labels in tqdm(train_dataset, desc='train'):
+        mems, loss_value = train_step(model, input_data,mask, labels, mems, optimizer)
+    # for question,ceq, mask, labels in tqdm(train_dataset):
+    #     input_data = ceq if config_xl.mode == 'concepts' else question
         mems, loss_value = train_step(model, input_data,mask, labels, mems, optimizer)
         num_batches += 1
         total_loss += loss_value.numpy()
@@ -239,7 +239,7 @@ for epoch in range(config_xl.epoch):
 #save model weights and test model
 if not os.path.exists(config_xl.model_save_dir):
     os.makedirs(config_xl.model_save_dir)       
-model.save_weights(config_xl.model_save_dir+'{}ep_{}mem_{}.ckpt/my_checkpoint'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)) 
+model.save_weights(config_xl.model_save_dir+current_time+'_{}ep_{}mem_{}.ckpt/my_checkpoint'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)) 
 
 test_mems = None
 test_loss0,test_acc0,average_precision, average_recall, average_f1_score = evaluate(model,test_mems, test_dataset)
@@ -253,7 +253,7 @@ print(f'Test Loss on First Half Dataset after Epoch {epoch + 1}: {test_loss0}')
 # make embedding projector 
 from tensorboard.plugins import projector
 
-log_dir=config_xl.tensorboard_emb_log_dir+current_time+'{}ep_{}mem_{}/'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)
+log_dir=config_xl.tensorboard_emb_log_dir+current_time+'_{}ep_{}mem_{}/'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
 

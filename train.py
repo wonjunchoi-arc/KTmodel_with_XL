@@ -8,7 +8,6 @@ from tensorflow.keras.utils import register_keras_serializable
 from tqdm import tqdm
 import datetime
 import argparse
-from preprocess.make_Tf_data import make_dataset
 
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0" # 실행코드에서 정하자

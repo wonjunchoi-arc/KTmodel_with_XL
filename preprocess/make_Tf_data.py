@@ -50,6 +50,9 @@ def make_dataset(args):
     test = {"qseqs": [], "cseqs": [], "masked_R": [], "labels": []} #"q_shift": [], "c_shift": [], "r_shift": []}
 
 
+    
+
+
     # Make the value '12,52,1' to 12,52,1 and attach eos_token to concepts and questions by uid.
     for i, row in tqdm(train_df.iterrows(),desc="Train_df"):
         cseq_list=[int(_) for _ in row["concepts"].split(",")]
@@ -67,7 +70,8 @@ def make_dataset(args):
         train["masked_R"].append(masked_R)
         train["labels"].append(labels)
 
-
+    
+        
     for i, row in tqdm(test_df.iterrows(),desc="Test_df"):
         cseq_list=[int(_) for _ in row["concepts"].split(",")]
         cseq_list.append(args.eos_token)   
@@ -83,8 +87,7 @@ def make_dataset(args):
         masked_R, labels = get_evalmask_token(rseq_list, args.mask_token, args.eos_token)
         
         test["masked_R"].append(masked_R)
-        test["labels"].append(labels)\
-        
+        test["labels"].append(labels)
 
 
 
