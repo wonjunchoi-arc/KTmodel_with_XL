@@ -185,6 +185,7 @@ def make_dataset(args):
             pickle.dump(dkeyid2idx, file)
             
         print('Making Tf.dataset is complited')
+        return os.path.exists(args.tf_data_dir), os.path.exists(args.tf_data_dir+'/'+args.mode)
     
 
 parser = argparse.ArgumentParser(description='TransfoXL config')
@@ -201,7 +202,8 @@ args = parser.parse_args()
 
 
 if not (os.path.exists(args.tf_data_dir)) & (os.path.exists(args.tf_data_dir+'/'+args.mode)):
+    print(os.path.exists(args.tf_data_dir+'/'+args.mode))
     os.makedirs(args.tf_data_dir) 
     tf_train_dir = args.tf_data_dir+'/{}'.format(args.mode) +'/train'
     tf_test_dir = args.tf_data_dir+'/{}'.format(args.mode) +'/test'
-    make_dataset(args)
+    dir, tf_dir=make_dataset(args)
