@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-
+from app.predict import predict_pipline
+from app.predict import __version__ as model_version
 
 import uvicorn
 
@@ -13,7 +14,7 @@ class StudentLogPath(BaseModel):
 
 
 class PredictionOut(BaseModel):
-    Path : str
+    output_path : str
 
 @app.get("/")
 def home():
@@ -26,7 +27,7 @@ def predict(payload : StudentLogPath):
 
 
 
-if __name__ == '__main__':
-    uvicorn.run(app, host='127.0.0.1', port=8008)
+# if __name__ == '__main__':
+#     uvicorn.run(app)
 
 

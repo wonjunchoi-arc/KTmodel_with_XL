@@ -226,7 +226,6 @@ for epoch in range(config_xl.epoch):
             tf.summary.scalar('auc', train_auc.result(), step=num_batches)
 
 #save model weights and test model       
-model.save_weights('/home/jun/workspace/KT/save_model/{}ep_{}mem_{}.ckpt/my_checkpoint'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)) 
 
 test_mems = None
 test_loss0,test_acc0,average_precision, average_recall, average_f1_score = evaluate(model,test_mems, test_dataset)
@@ -234,6 +233,8 @@ print(f'Test Loss on First Half Dataset after Epoch {epoch + 1}: {test_loss0}')
 
 
 #save model weights
+model.save_weights('/home/jun/workspace/KT/save_model/{}ep_{}mem_{}.ckpt/my_checkpoint'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)) 
+config_xl.save_pretrained('/home/jun/workspace/KT/save_model/{}ep_{}mem_{}.ckpt'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode))
 
 
 
