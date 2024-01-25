@@ -82,4 +82,4 @@ RUN source activate ${CONDA_ENV_NAME} && \
 
 #docker build -t custom/mydocker:latest --build-arg UID=93 --build-arg USER_NAME=jun -f Dockerfile .
 #docker run -it --name test --gpus 0 -p 8888:8888 (로컬의 pwd 경로를 도커의 /workspace 경로와 마운트)-v $PWD:/workspace (도커의 작업폴더를 설정)-w /workspace custom/mydocker:latest /bin/bash 
-#docker run -it --name test --gpus 0 -p 8888:8888 -v $PWD:/workspace -w /workspace custom/mydocker:latest /bin/bash 
+# docker run -it --name test --gpus 0 -p 8888:8888 -v $PWD:/workspace -w /workspace custom/mydocker:latest /bin/bash 

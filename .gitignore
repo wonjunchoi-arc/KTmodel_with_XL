@@ -4,3 +4,4 @@ save_model/
 pykttoolkit/
 migrations/
 total.csv
+preprocess/make_txt_s3.py

@@ -5,12 +5,31 @@ import itertools
 import pickle
 import os
 import argparse
-
+import logging
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG) 
+
+formatter = logging.Formatter(fmt='%(asctime)s:%(module)s:%(levelname)s:%(message)s', datefmt='%Y-%m-%d %H:%M')
+
+
+
+# DEBUG 레벨 이상의 로그를 `debug.log`에 출력하는 Handler
+file_debug_handler = logging.FileHandler('logs/make_tf_data/info.log')
+file_debug_handler.setLevel(logging.INFO)
+file_debug_handler.setFormatter(formatter)
+logger.addHandler(file_debug_handler)
+
+# ERROR 레벨 이상의 로그를 `error.log`에 출력하는 Handler
+file_error_handler = logging.FileHandler('logs/make_tf_data/error.log')
+file_error_handler.setLevel(logging.ERROR)
+file_error_handler.setFormatter(formatter)
+logger.addHandler(file_error_handler)
+
 
 def make_dataset(args):
 
-    print('reading txt data ~~~~~~~')
     total_df, effective_keys = read_data(args.data)
 
     stares = []
@@ -22,23 +41,19 @@ def make_dataset(args):
 
     oris, _, qs, cs, seqnum = calStatistics(total_df, stares, "original") 
 
-    print("="*20)
-    print(
+    logger.info(
         f"original total interactions: {oris}, qs: {qs}, cs: {cs}, seqnum: {seqnum}")   
 
 
     # questions ,concepts 값들의 숫자를 재정의 하여 0~ 나오도록 만들 면서 is_repeat값 처리
     # 14_54_14 으로 된 concepts를 14,54,14 로 분리하고 기존의 response도 똑같이 확장처리
-    print('extend_multi_concepts ~ ')
     total_df_ex, effective_keys = extend_multi_concepts(total_df, effective_keys)
-    print('in the process of mapping')
     total_df, dkeyid2idx = id_mapping(total_df_ex)
     dkeyid2idx["max_concepts"] = max_concepts
 
     extends, _, qs, cs, seqnum = calStatistics(
         total_df, stares, "extend multi")
-    print("="*20)
-    print(
+    logger.info(
         f"after extend multi, total interactions: {extends}, qs: {qs}, cs: {cs}, seqnum: {seqnum}")
 
 
@@ -93,33 +108,33 @@ def make_dataset(args):
 
         #train data  
         #Work out how cleanly we can divide the dataset into bsz,tgt_len parts
-        cseqs_list = list(itertools.chain(*train['cseqs']))
-        qseqs_list = list(itertools.chain(*train['qseqs']))
+        train_cseqs_list = list(itertools.chain(*train['cseqs']))
+        train_qseqs_list = list(itertools.chain(*train['qseqs']))
         r_masked_list = tf.concat(train['masked_R'], axis=0)
         labels = tf.concat(train['labels'], axis=0)
 
-        n_step = len(cseqs_list) // (args.batch_size*args.tgt_len)
+        n_step = len(train_cseqs_list) // (args.batch_size*args.tgt_len)
 
 
-        sliced_cseqs = tf.slice(cseqs_list,[0],[n_step * args.batch_size*args.tgt_len])  
-        sliced_qseqs = tf.slice(qseqs_list,[0],[n_step * args.batch_size*args.tgt_len])  
+        train_sliced_cseqs = tf.slice(train_cseqs_list,[0],[n_step * args.batch_size*args.tgt_len])  
+        train_sliced_qseqs = tf.slice(train_qseqs_list,[0],[n_step * args.batch_size*args.tgt_len])  
         sliced_r_mask = tf.slice(r_masked_list,[0],[n_step * args.batch_size*args.tgt_len]) 
         sliced_labels = tf.slice(labels,[0],[n_step * args.batch_size*args.tgt_len]) 
 
-        count =len(sliced_cseqs)// (args.batch_size*args.tgt_len)
+        count =len(train_sliced_cseqs)// (args.batch_size*args.tgt_len)
 
         new_shape = (args.batch_size, -1)  # 나머지 차원은 자동으로 계산됨
 
-        cseq_reshaped = tf.reshape(sliced_cseqs, new_shape)
-        qseq_reshaped = tf.reshape(sliced_qseqs, new_shape)
-        r_mask_reshaped = tf.reshape(sliced_r_mask, new_shape)
-        labels_reshaped = tf.reshape(sliced_labels, new_shape)
+        train_cseq_reshaped = tf.reshape(train_sliced_cseqs, new_shape)
+        train_qseq_reshaped = tf.reshape(train_sliced_qseqs, new_shape)
+        train_r_mask_reshaped = tf.reshape(sliced_r_mask, new_shape)
+        train_labels_reshaped = tf.reshape(sliced_labels, new_shape)
 
         # Because of the einsum calculation of the xl model dataset batch, tgt_len dimension changed
-        cseq_transposed = tf.transpose(cseq_reshaped)
-        qseq_transposed = tf.transpose(qseq_reshaped)
-        r_mask_transposed = tf.transpose(r_mask_reshaped)
-        labels_transposed = tf.transpose(labels_reshaped)
+        train_cseq_transposed = tf.transpose(train_cseq_reshaped)
+        train_qseq_transposed = tf.transpose(train_qseq_reshaped)
+        train_r_mask_transposed = tf.transpose(train_r_mask_reshaped)
+        train_labels_transposed = tf.transpose(train_labels_reshaped)
 
 
         #test data  
@@ -135,7 +150,6 @@ def make_dataset(args):
         # 아래의 두 코드는   data 텐서에서 배치 크기 bsz로 깔끔하게 맞지 않는 추가 요소를 제거하는 것 배치에 띡 떨어지게
             
         test_n_step = len(test_cseqs_list) // (args.batch_size*args.tgt_len)
-        print('n_step',test_n_step) # 
 
         test_sliced_cseqs = tf.slice(test_cseqs_list,[0],[test_n_step * args.batch_size*args.tgt_len])  
         test_sliced_qseqs = tf.slice(test_qseqs_list,[0],[test_n_step * args.batch_size*args.tgt_len])  
@@ -144,7 +158,6 @@ def make_dataset(args):
         test_sliced_labels = tf.slice(test_labels,[0],[test_n_step * args.batch_size*args.tgt_len])  
 
         count =len(test_sliced_cseqs)// (args.batch_size*args.tgt_len)
-        print(count)
 
 
 
@@ -167,12 +180,12 @@ def make_dataset(args):
         #make tf.dataset
         if args.mode =='question':
             train_dataset = tf.data.Dataset.from_tensor_slices(
-            (qseq_transposed, r_mask_transposed, labels_transposed))
+            (train_qseq_transposed, train_r_mask_transposed, train_labels_transposed))
             test_dataset = tf.data.Dataset.from_tensor_slices(
             (test_qseq_transposed, test_r_masked_transposed, test_labels_transposed))
         else:
             train_dataset = tf.data.Dataset.from_tensor_slices(
-            (cseq_transposed, r_mask_transposed, labels_transposed))
+            (train_cseq_transposed, train_r_mask_transposed, train_labels_transposed))
             test_dataset = tf.data.Dataset.from_tensor_slices(
             (test_cseq_transposed, test_r_masked_transposed, test_labels_transposed))
 
@@ -205,7 +218,7 @@ args = parser.parse_args()
 
 
 if not (os.path.exists(args.tf_data_dir)) & (os.path.exists(args.tf_data_dir+'/'+args.mode)):
-    print(os.path.exists(args.tf_data_dir+'/'+args.mode))
+    logger.info('tf_data_dir',os.path.exists(args.tf_data_dir+'/'+args.mode))
     os.makedirs(args.tf_data_dir) 
     tf_train_dir = args.tf_data_dir+'/{}'.format(args.mode) +'/train'
     tf_test_dir = args.tf_data_dir+'/{}'.format(args.mode) +'/test'

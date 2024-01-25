@@ -8,10 +8,28 @@ from tensorflow.keras.utils import register_keras_serializable
 from tqdm import tqdm
 import datetime
 import argparse
+import logging
 
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0" # 실행코드에서 정하자
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG) 
+
+formatter = logging.Formatter(fmt='%(asctime)s:%(module)s:%(levelname)s:%(message)s', datefmt='%Y-%m-%d %H:%M')
+
+
+
+# DEBUG 레벨 이상의 로그를 `debug.log`에 출력하는 Handler
+file_debug_handler = logging.FileHandler('logs/train/info.log')
+file_debug_handler.setLevel(logging.INFO)
+file_debug_handler.setFormatter(formatter)
+logger.addHandler(file_debug_handler)
+
+# ERROR 레벨 이상의 로그를 `error.log`에 출력하는 Handler
+file_error_handler = logging.FileHandler('logs/train/error.log')
+file_error_handler.setLevel(logging.ERROR)
+file_error_handler.setFormatter(formatter)
+logger.addHandler(file_error_handler)
 
 
 parser = argparse.ArgumentParser(description='TransfoXL config')
@@ -33,10 +51,8 @@ parser.add_argument('--tf_data_dir', type=str, required=True, default='/home/jun
 parser.add_argument('--tensorboard_log_dir', type=str, required=False, default='/home/jun/workspace/KT/logs/gradient_tape/')
 parser.add_argument('--tensorboard_emb_log_dir', type=str, required=False, default='/home/jun/workspace/KT/logs/embedding/',help='tensorboard embedding projection dictionary')
 parser.add_argument('--model_save_dir', type=str, required=False, default='/home/jun/workspace/KT/save_model/')
-
-
-# opt는 parser로 나눈 모든 argument들을 dict 형식으로 가진다.
 args = parser.parse_args()
+
 
 config_xl = TransfoXLConfig(
     d_embed=args.d_embed,
@@ -60,9 +76,9 @@ config_xl = TransfoXLConfig(
     model_save_dir = args.model_save_dir
 
 )
-# 나중에는 이코드로 
-# tf_train_dir = args.tf_data_dir+'/{}'.format(args.mode) +'/train'
-# tf_test_dir = args.tf_data_dir+'/{}'.format(args.mode) +'/test'
+
+logging.info('config_xl',config_xl)
+
 
 tf_train_dir = config_xl.tf_data_dir+'/{}'.format(config_xl.mode)+'/train'
 tf_test_dir = config_xl.tf_data_dir+'/{}'.format(config_xl.mode)+'/test'
@@ -70,6 +86,7 @@ train_dataset = tf.data.experimental.load(tf_train_dir)
 test_dataset = tf.data.experimental.load(tf_test_dir)
 with open(config_xl.tf_data_dir+"/dkeyid2idx.pkl", "rb") as file:
     dkeyid2idx = pickle.load(file) 
+
 
 
 #tensorboard logdir
@@ -80,6 +97,9 @@ train_log_dir = config_xl.tensorboard_log_dir+ current_time +'{}ep_{}mem_{}/trai
 test_log_dir = config_xl.tensorboard_log_dir+ current_time +'{}ep_{}mem_{}/test'.format(config_xl.epoch, config_xl.mem_len,config_xl.mode)
 train_summary_writer = tf.summary.create_file_writer(train_log_dir)
 test_summary_writer = tf.summary.create_file_writer(test_log_dir)
+
+logging.info('tensorboard_log_dir',config_xl.tensorboard_log_dir)
+
 
 
 @register_keras_serializable()
@@ -239,12 +259,12 @@ for epoch in range(config_xl.epoch):
 #save model weights and test model
 if not os.path.exists(config_xl.model_save_dir):
     os.makedirs(config_xl.model_save_dir)       
-model.save_weights(config_xl.model_save_dir+current_time+'_{}ep_{}mem_{}.ckpt/my_checkpoint'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)) 
-
 test_mems = None
 test_loss0,test_acc0,average_precision, average_recall, average_f1_score = evaluate(model,test_mems, test_dataset)
-print(f'Test Loss on First Half Dataset after Epoch {epoch + 1}: {test_loss0}')
+model.save_weights(config_xl.model_save_dir+current_time+'_{}ep_{}mem_{}.ckpt/my_checkpoint'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)) 
 
+
+logging.info('model.summary',model.summary())
 
 #save model weights
 

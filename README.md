@@ -68,3 +68,18 @@ In addition, concepts (12_42) made of train, test split/tag, etc. are separated 
 > CUDA_VISIBLE_DEVICES=0 python train_args.py --tf_data_dir {path to your Tf.dataset dir} --mem_len 200 --batch_size 65 --tgt_len 140 --epoch 3 --mode {If you created concepts dataset, enter concepts mode}
 
 
+
+## Make Docker images
+
+> docker build -t custom/mydocker:latest --build-arg UID=93 --build-arg USER_NAME=jun -f Dockerfile .
+
+
+## Start Docker Container
+
+> docker run -it --name test --gpus 0 -p 8888:8888 -v $PWD:/workspace {Mount the folder running the current command and the docker's /workspace}  
+> -w /workspace {Setting the Docker's work Folder} custom/mydocker:latest {docker images} /bin/bash
+
+
+## Run Fast-api server
+
+> uvicorn app.main:app --reload --host 0.0.0.0 --port 8888
