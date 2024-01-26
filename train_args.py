@@ -104,7 +104,7 @@ def train_step(model, data1,data2, target, mems, optimizer):
     return mems,mean_loss
 
 
-def evaluate_step(model,test_dataset,test_summary_writer):
+def evaluate(model,test_dataset,test_summary_writer,config_xl):
     total_loss = 0.0
     num_batches = 0
     evaluation_metrics = []
@@ -192,12 +192,8 @@ def Make_embedding_projector(config_xl, dkeyid2idx,model):
 
 
 
-def train(config_xl):
+def train(train_dataset,train_summary_writer,config_xl):
     try:
-        train_dataset,test_dataset,dkeyid2idx=load_TFdataset(config_xl)
-        
-        train_summary_writer, test_summary_writer = make_tensorboard_summary_writer(config_xl)
-
         learning_rate = CustomSchedule(config_xl.d_model)
 
         optimizer = tf.keras.optimizers.Adam(learning_rate, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
@@ -230,31 +226,23 @@ def train(config_xl):
             model_saved_dir =config_xl.model_save_dir+current_time+'_{}ep_{}mem_{}.ckpt/my_checkpoint'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)       
             model.save_weights(model_saved_dir)
 
-            logging.info('model.summary',model.summary()) 
+            logging.info('model.summary: %s',model.summary()) 
 
     except Exception as e:
         logging.error(f"Error: {e}")
 
-    return model,test_dataset,test_summary_writer
+    return model
         
-def evaluate(model,test_dataset,config_xl,test_summary_writer):
-    try:
-        
-
-        model = TFTransfoXLMLMHeadModel(config=config_xl)
-
-        test_loss0,test_acc0,average_precision, average_recall, average_f1_score = evaluate_step(model, test_dataset,test_summary_writer)
-        logging.info('test_loss:{},test_acc:{},test_precision:{}, average_recall:{}, average_f1_score:{}'.format(test_loss0,test_acc0,average_precision, average_recall, average_f1_score))
-    except Exception as e:
-        logging.error(f"Error: {e}")
-
 
 
 def main(config_xl) -> None :
+    train_dataset,test_dataset,dkeyid2idx=load_TFdataset(config_xl)
+        
+    train_summary_writer, test_summary_writer = make_tensorboard_summary_writer(config_xl)
 
-    model,test_dataset,test_summary_writer =train(config_xl)
-    evaluate(model,test_dataset, config_xl,test_summary_writer)
-
+    model =train(train_dataset,train_summary_writer,config_xl)
+    test_loss0,test_acc0,average_precision, average_recall, average_f1_score = evaluate(model, test_dataset,test_summary_writer,config_xl)
+    logging.info('test_loss:{},test_acc:{},test_precision:{}, average_recall:{}, average_f1_score:{}'.format(test_loss0,test_acc0,average_precision, average_recall, average_f1_score))
  
 # nohup python /home/jun/workspace/KT/train.py 1 > 1.out 2 > 2.out &
 
