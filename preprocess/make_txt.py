@@ -13,25 +13,7 @@ parser.add_argument('--name_txt', type=str, required=True)
 parser.add_argument('--dataset_name', type=str, required=False, default='ednet')
 args = parser.parse_args()
 
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG) 
-
-formatter = logging.Formatter(fmt='%(asctime)s:%(module)s:%(levelname)s:%(message)s', datefmt='%Y-%m-%d %H:%M')
-
-
-
-# DEBUG 레벨 이상의 로그를 `debug.log`에 출력하는 Handler
-file_debug_handler = logging.FileHandler('logs/make_txt/info.log')
-file_debug_handler.setLevel(logging.INFO)
-file_debug_handler.setFormatter(formatter)
-logger.addHandler(file_debug_handler)
-
-# ERROR 레벨 이상의 로그를 `error.log`에 출력하는 Handler
-file_error_handler = logging.FileHandler('logs/make_txt/error.log')
-file_error_handler.setLevel(logging.ERROR)
-file_error_handler.setFormatter(formatter)
-logger.addHandler(file_error_handler)
+logging.basicConfig(level=logging.INFO)
 
 
 
@@ -42,8 +24,8 @@ def read_data_from_csv(read_file : str, write_file :str,dataset_name :str) -> (s
     if not dataset_name is None:
         write_file = write_file.replace("/ednet/", f"/{dataset_name}/")
         write_dir = read_file.replace("/ednet/", f"/{dataset_name}")
-        logger.info(f"write_dir is {write_dir}")
-        logger.info(f"write_file is {write_file}")
+        logging.info(f"write_dir is {write_dir}")
+        logging.info(f"write_file is {write_file}")
 
     # uid range
     random.seed(2)
@@ -66,9 +48,9 @@ def read_data_from_csv(read_file : str, write_file :str,dataset_name :str) -> (s
 
         
     start_i =0
-    logger.info(f"total user num: {count}")
+    logging.info(f"total user num: {count}")
     user_df = pd.concat(file_list[start_i:])
-    logger.info(f"after sub user_df: {len(user_df)}")
+    logging.info(f"after sub user_df: {len(user_df)}")
     user_df["index"] = range(user_df.shape[0])
     question_df = pd.read_csv(os.path.join(read_file, 'contents', 'questions.csv'))
     
@@ -83,11 +65,11 @@ def read_data_from_csv(read_file : str, write_file :str,dataset_name :str) -> (s
 
 
     ins, us, qs, cs, avgins, avgcq, na = sta_infos(merged_df, KEYS, stares)
-    logger.info(f"original interaction num: {ins}, user num: {us}, question num: {qs}, concept num: {cs}, avg(ins) per s: {avgins}, avg(c) per q: {avgcq}, na: {na}")
+    logging.info(f"original interaction num: {ins}, user num: {us}, question num: {qs}, concept num: {cs}, avg(ins) per s: {avgins}, avg(c) per q: {avgcq}, na: {na}")
 
 
     ins, us, qs, cs, avgins, avgcq, na = sta_infos(merged_df, KEYS, stares)
-    logger.info(f"after drop interaction num: {ins}, user num: {us}, question num: {qs}, concept num: {cs}, avg(ins) per s: {avgins}, avg(c) per q: {avgcq}, na: {na}")
+    logging.info(f"after drop interaction num: {ins}, user num: {us}, question num: {qs}, concept num: {cs}, avg(ins) per s: {avgins}, avg(c) per q: {avgcq}, na: {na}")
     
     
     ui_df = merged_df.groupby('user_id', sort=False)
@@ -109,7 +91,7 @@ def read_data_from_csv(read_file : str, write_file :str,dataset_name :str) -> (s
             [[str(user), str(seq_len)], seq_problems, seq_skills, seq_ans, seq_start_time, seq_response_cost])
 
     write_txt(write_file, user_inters)
-    logger.info("\n".join(stares))
+    logging.info("\n".join(stares))
     return write_dir, write_file
 
 
