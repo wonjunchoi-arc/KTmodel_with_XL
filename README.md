@@ -67,8 +67,14 @@ Finally, save the tf.data.Dataset made like this
 
 ## train_args.py
 
-> CUDA_VISIBLE_DEVICES=0 python train_args.py --tf_data_dir {path to your Tf.dataset dir} --mem_len 200 --epoch 3 --mode {If you created concepts dataset, enter concepts mode} --tensorboard_log_dir --tensorboard_emb_log_dir --model_save_dir 
+> CUDA_VISIBLE_DEVICES=0 python train_args.py --tf_data_dir {path to your Tf.dataset dir} --mem_len 200 --epoch 3 --mode {If you train with concepts dataset, enter concepts mode} --tensorboard_log_dir --tensorboard_emb_log_dir --model_save_dir 
 
+#  train & test metric with tensorboard
+> tensorboard --logdir tensorboard_log_dir +'/'
+
+
+# Check the association of values before mapping in the embedding layer
+> tensorboard --logdir tensorboard_emb_log_dir+'/{Folder Saved during Training}'
 
 
 ## Make Docker images

@@ -45,8 +45,8 @@ def load_TFdataset(config_xl) :
 def make_tensorboard_summary_writer(config_xl):
     if not os.path.exists(config_xl.tensorboard_log_dir):
         os.makedirs(config_xl.tensorboard_log_dir)     
-    train_log_dir = config_xl.tensorboard_log_dir+ current_time +'{}ep_{}mem_{}/train'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)
-    test_log_dir = config_xl.tensorboard_log_dir+ current_time +'{}ep_{}mem_{}/test'.format(config_xl.epoch, config_xl.mem_len,config_xl.mode)
+    train_log_dir = config_xl.tensorboard_log_dir+'/'+ current_time +'{}ep_{}mem_{}/train'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)
+    test_log_dir = config_xl.tensorboard_log_dir+'/'+ current_time +'{}ep_{}mem_{}/test'.format(config_xl.epoch, config_xl.mem_len,config_xl.mode)
     train_summary_writer = tf.summary.create_file_writer(train_log_dir)
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
     logging.info('tensorboard_log_dir:  %s',config_xl.tensorboard_log_dir)
@@ -168,15 +168,15 @@ def evaluate(model,test_dataset,test_summary_writer,config_xl):
     return average_loss, average_metric, average_precision, average_recall, average_f1_score
 
 # make embedding projector 
-def Make_embedding_projector(config_xl, dkeyid2idx,model):
-    log_dir=config_xl.tensorboard_emb_log_dir+current_time+'_{}ep_{}mem_{}/'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)
+def Make_embedding_projector(model,config_xl, dkeyid2idx,):
+    log_dir=config_xl.tensorboard_emb_log_dir+'/'+current_time+'_{}ep_{}mem_{}/'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
     # Save Labels separately on a line-by-line manner.
     with open(os.path.join(log_dir, 'metadata.tsv'), "w") as f:
-        for concepts in dkeyid2idx[config_xl.mode]:
-            f.write("{}\n".format(concepts))
+        for valeu_before_mapping in dkeyid2idx[config_xl.mode]:
+            f.write("{}\n".format(valeu_before_mapping))
 
     weights = tf.Variable(model.transformer.word_emb_C.get_weights()[0])
 
@@ -223,7 +223,7 @@ def train(train_dataset,train_summary_writer,config_xl):
         # save model            
         if not os.path.exists(config_xl.model_save_dir):
             os.makedirs(config_xl.model_save_dir)
-        model_saved_dir =config_xl.model_save_dir+current_time+'_{}ep_{}mem_{}.ckpt/my_checkpoint'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)       
+        model_saved_dir =config_xl.model_save_dir+'/'+current_time+'_{}ep_{}mem_{}.ckpt/my_checkpoint'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)       
         model.save_weights(model_saved_dir)
         logging.info('model_save_dir : %s',model_saved_dir)
         logging.info('model.summary: %s',model.summary()) 
@@ -242,6 +242,7 @@ def main(config_xl) -> None :
 
     model =train(train_dataset,train_summary_writer,config_xl)
     test_loss0,test_acc0,average_precision, average_recall, average_f1_score = evaluate(model, test_dataset,test_summary_writer,config_xl)
+    Make_embedding_projector(model,config_xl,dkeyid2idx)
     logging.info('test_loss:{},test_acc:{},test_precision:{}, average_recall:{}, average_f1_score:{}'.format(test_loss0,test_acc0,average_precision, average_recall, average_f1_score))
  
 # nohup python /home/jun/workspace/KT/train.py 1 > 1.out 2 > 2.out &
