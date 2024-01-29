@@ -3,5 +3,9 @@ logs/
 save_model/
 pykttoolkit/
 migrations/
+model/
+.ipynb_checkpoints/
+__pycache__/
+
 total.csv
 preprocess/make_txt_s3.py
