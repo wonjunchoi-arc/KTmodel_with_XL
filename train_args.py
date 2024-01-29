@@ -111,9 +111,7 @@ def evaluate(model,test_dataset,test_summary_writer,config_xl):
     test_mems = None
 
     for input_data, masked_responses, responses in tqdm(test_dataset, desc='eval'):
-    #     outputs = model(concepts=test_input_data, responses=test_mask, labels=test_labels, mems=mems, training=False)
-    # for test_question,test_ceq, test_mask, test_labels in test_dataset:
-    #     test_input_data = test_ceq if config_xl.mode == 'concepts' else test_question
+
         outputs = model(concepts=input_data, responses=masked_responses, labels=responses, mems=test_mems, training=False)
         logit = outputs.logit
         test_mems = outputs.mems
@@ -239,11 +237,10 @@ def main(config_xl) -> None :
     train_summary_writer, test_summary_writer = make_tensorboard_summary_writer(config_xl)
 
     model =train(train_dataset,train_summary_writer,config_xl)
-    test_loss0,test_acc0,average_precision, average_recall, average_f1_score = evaluate(model, test_dataset,test_summary_writer,config_xl)
+    test_loss,test_acc,test_precision, test_recall, test_f1_score = evaluate(model, test_dataset,test_summary_writer,config_xl)
     Make_embedding_projector(model,config_xl,dkeyid2idx)
-    logging.info('test_loss:{},test_acc:{},test_precision:{}, average_recall:{}, average_f1_score:{}'.format(test_loss0,test_acc0,average_precision, average_recall, average_f1_score))
+    logging.info('test_loss:{},test_acc:{},test_precision:{}, test_recall:{}, test_f1_score:{}'.format(test_loss,test_acc,test_precision, test_recall, test_f1_score))
  
-# nohup python /home/jun/workspace/KT/train.py 1 > 1.out 2 > 2.out &
 
 
 if __name__ == "__main__":
