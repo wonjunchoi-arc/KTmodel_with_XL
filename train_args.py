@@ -223,10 +223,10 @@ def train(train_dataset,train_summary_writer,config_xl):
         # save model            
         if not os.path.exists(config_xl.model_save_dir):
             os.makedirs(config_xl.model_save_dir)
-            model_saved_dir =config_xl.model_save_dir+current_time+'_{}ep_{}mem_{}.ckpt/my_checkpoint'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)       
-            model.save_weights(model_saved_dir)
-
-            logging.info('model.summary: %s',model.summary()) 
+        model_saved_dir =config_xl.model_save_dir+current_time+'_{}ep_{}mem_{}.ckpt/my_checkpoint'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)       
+        model.save_weights(model_saved_dir)
+        logging.info('model_save_dir : %s',model_saved_dir)
+        logging.info('model.summary: %s',model.summary()) 
 
     except Exception as e:
         logging.error(f"Error: {e}")
@@ -264,9 +264,9 @@ if __name__ == "__main__":
     parser.add_argument('--epoch', type=int, required=True, default=3)
     parser.add_argument('--mode', type=str, required=True, default='concepts',help='concepts or questions')
     parser.add_argument('--tf_data_dir', type=str, required=True, default='/home/jun/workspace/KT/data/ednet/TF_DATA')
-    parser.add_argument('--tensorboard_log_dir', type=str, required=False, default='/home/jun/workspace/KT/logs/gradient_tape/')
-    parser.add_argument('--tensorboard_emb_log_dir', type=str, required=False, default='/home/jun/workspace/KT/logs/embedding/',help='tensorboard embedding projection dictionary')
-    parser.add_argument('--model_save_dir', type=str, required=False, default='/home/jun/workspace/KT/save_model/')
+    parser.add_argument('--tensorboard_log_dir', type=str, required=True, default='/home/jun/workspace/KT/logs/gradient_tape/')
+    parser.add_argument('--tensorboard_emb_log_dir', type=str, required=True, default='/home/jun/workspace/KT/logs/embedding/',help='tensorboard embedding projection dictionary')
+    parser.add_argument('--model_save_dir', type=str, required=True, default='/home/jun/workspace/KT/save_model/')
     args = parser.parse_args()
 
 

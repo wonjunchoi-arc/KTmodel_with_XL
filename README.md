@@ -67,7 +67,7 @@ Finally, save the tf.data.Dataset made like this
 
 ## train_args.py
 
-> CUDA_VISIBLE_DEVICES=0 python train_args.py --tf_data_dir {path to your Tf.dataset dir} --mem_len 200 --batch_size 65 --tgt_len 140 --epoch 3 --mode {If you created concepts dataset, enter concepts mode}
+> CUDA_VISIBLE_DEVICES=0 python train_args.py --tf_data_dir {path to your Tf.dataset dir} --mem_len 200 --epoch 3 --mode {If you created concepts dataset, enter concepts mode} --tensorboard_log_dir --tensorboard_emb_log_dir --model_save_dir 
 
 
 
