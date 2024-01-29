@@ -1364,7 +1364,7 @@ class TFTransfoXLLMHeadModelOutput(ModelOutput):
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
             heads.
     """
-    loss: Optional[tf.Tensor] = None
+    logit: Optional[tf.Tensor] = None
     prediction_scores: tf.Tensor = None
     mems: List[tf.Tensor] = None
     hidden_states: Optional[Tuple[tf.Tensor]] = None
@@ -1819,7 +1819,7 @@ class TFTransfoXLMLMHeadModel(TFTransfoXLPreTrainedModel):
         #     return (softmax_output,) + transformer_outputs[1:]
 
         return TFTransfoXLLMHeadModelOutput(
-            loss = last_hidden,
+            logit = last_hidden,
             mems=transformer_outputs.mems,
             hidden_states=transformer_outputs.hidden_states,
             attentions=transformer_outputs.attentions,

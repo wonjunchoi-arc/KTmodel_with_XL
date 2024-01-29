@@ -82,20 +82,20 @@ class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
 def train_step(model, data1,data2, target, mems, optimizer):
     with tf.GradientTape() as tape:
         outputs = model(concepts=data1,responses=data2, labels=target, mems=mems)
-        loss = outputs.loss
+        logit = outputs.logit
         mems = outputs.mems
-        loss_mx = target != -100
-        loss_value = loss[loss_mx]
-        loss_value = tf.reshape(loss_value, [-1, config_xl.R_vocab_size])
-        labels = target[loss_mx]
+        logit_mx = target != -100
+        logit_value = logit[logit_mx]
+        logit_value = tf.reshape(logit_value, [-1, config_xl.R_vocab_size])
+        labels = target[logit_mx]
 
         
-        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=loss_value)
+        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=logit_value)
         # batch_loss = tf.reduce_sum(loss) / valid_samples
         mean_loss = tf.reduce_mean(loss)
         train_loss(loss)
-        train_accuracy(labels,loss_value)
-        predictions =tf.nn.softmax(loss_value)
+        train_accuracy(labels,logit_value)
+        predictions =tf.nn.softmax(logit_value)
         train_auc(tf.one_hot(labels, depth=predictions.shape[1]), predictions)
 
     gradients = tape.gradient(mean_loss, model.trainable_variables)
@@ -110,32 +110,32 @@ def evaluate(model,test_dataset,test_summary_writer,config_xl):
     evaluation_metrics = []
     test_mems = None
 
-    for test_input_data, test_mask, test_labels in tqdm(test_dataset, desc='eval'):
+    for input_data, masked_responses, responses in tqdm(test_dataset, desc='eval'):
     #     outputs = model(concepts=test_input_data, responses=test_mask, labels=test_labels, mems=mems, training=False)
     # for test_question,test_ceq, test_mask, test_labels in test_dataset:
     #     test_input_data = test_ceq if config_xl.mode == 'concepts' else test_question
-        outputs = model(concepts=test_input_data, responses=test_mask, labels=test_labels, mems=test_mems, training=False)
-        loss = outputs.loss
+        outputs = model(concepts=input_data, responses=masked_responses, labels=responses, mems=test_mems, training=False)
+        logit = outputs.logit
         test_mems = outputs.mems
 
-        loss_mx = test_labels != -100
-        loss_value = loss[loss_mx]
-        loss_value = tf.reshape(loss_value, [-1, config_xl.R_vocab_size])
-        labels = test_labels[loss_mx]
+        logit_mx = responses != -100
+        logit_value = logit[logit_mx]
+        logit_value = tf.reshape(logit_value, [-1, config_xl.R_vocab_size])
+        labels = responses[logit_mx]
 
-        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=loss_value)
+        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=logit_value)
         mean_loss = tf.reduce_mean(loss)
 
         # Update precision and recall metrics
-        predicted_labels = tf.argmax(loss_value, axis=1)
-        predictions =tf.nn.softmax(loss_value)
+        predicted_labels = tf.argmax(logit_value, axis=1)
+        predictions =tf.nn.softmax(logit_value)
 
         
         test_auc(tf.one_hot(labels, depth=predictions.shape[1]), predictions)
         test_precision(labels, predicted_labels)
         test_recall(labels, predicted_labels)
 
-        test_accuracy(labels, loss_value)
+        test_accuracy(labels, logit_value)
         test_loss(loss)
         
         
@@ -206,10 +206,8 @@ def train(train_dataset,train_summary_writer,config_xl):
             start = time.time()
             total_loss = 0.0
             mems = None                   
-            for input_data, mask, labels in tqdm(train_dataset, desc='train'):
-                mems, loss_value = train_step(model, input_data,mask, labels, mems, optimizer)
-            # for question,ceq, mask, labels in tqdm(train_dataset):
-            #     input_data = ceq if config_xl.mode == 'concepts' else question
+            for input_data, masked_responses, responses in tqdm(train_dataset, desc='train'):
+                mems, loss_value = train_step(model, input_data,masked_responses, responses, mems, optimizer)
                 num_batches += 1
                 total_loss += loss_value.numpy()
                 if num_batches % 100 == 0:
