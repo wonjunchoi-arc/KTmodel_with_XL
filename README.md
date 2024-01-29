@@ -55,6 +55,8 @@ KT1 Data(u{}.csv, content/question.csv) -> data.txt
 Load the txt file and create individual Tf.dataset (train, test) based on concepts, questions mode.
 
 In addition, concepts (12_42) made of train, test split/tag, etc. are separated into individual elements and even mapping functions.
+And  Reshape, transpose data  to enter the xl model, The row is batch_size and the column is tgt_len
+Finally, save the tf.data.Dataset made like this
 
 
  > python preprocess/make_Tf_data.py --data {Path to txt.py} --batch_size --tgt_len --mode {concepts or questions} --tf_data_dir {Where you want to save it}
