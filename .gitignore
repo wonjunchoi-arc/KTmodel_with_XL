@@ -6,6 +6,7 @@ migrations/
 model/
 .ipynb_checkpoints/
 __pycache__/
+mlruns/
 
 total.csv
 preprocess/make_txt_s3.py

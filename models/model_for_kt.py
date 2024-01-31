@@ -65,7 +65,7 @@ def input_processing_MLM(func , config, **kwargs :dict):
         Two lists, one for the missing layers, and another one for the unexpected layers.
 
     """
-
+    # print('kwargs',kwargs)
     
     signature = dict(inspect.signature(func).parameters)
     has_kwargs = bool(signature.pop("kwargs", None))
@@ -189,8 +189,8 @@ def input_processing_MLM(func , config, **kwargs :dict):
     else:
         if tf.is_tensor(input_concepts) or input_concepts is None:
             if parameter_names[0] == 'args':
-                input_concepts = tf.reshape(input_concepts,(1,65))
-                input_responses = tf.reshape(input_responses,(1,65))
+                input_concepts = tf.reshape(input_concepts,(1,140))
+                input_responses = tf.reshape(input_responses,(1,140))
                 output['concepts'] = input_concepts
                 output['responses'] = input_responses
             else:
@@ -1070,8 +1070,12 @@ class TFTransfoXLMLMMainLayer(tf.keras.layers.Layer):
         if self.mem_len > 0:
             mems = []
             for i in range(self.n_layer):
-                empty = tf.zeros([self.mem_len, bsz, self.d_model])
-                mems.append(empty)
+                if bsz is None:
+                    empty = tf.zeros([self.mem_len, 0, self.d_model])
+                    mems.append(empty)
+                else:
+                    empty = tf.zeros([self.mem_len, bsz, self.d_model])
+                    mems.append(empty)
 
             return mems
         else:
@@ -1126,17 +1130,19 @@ class TFTransfoXLMLMMainLayer(tf.keras.layers.Layer):
             training=training,
             kwargs_call=kwargs,
         )
-        #inputs {'mems': None, 'head_mask': None, 'inputs_embeds': None, 'output_attentions': False, 'output_hidden_states': False, 'return_dict': True, 'training': False, 'input_ids': <tf.Tensor 'dataset_inputs:0' shape=(1, 3) dtype=int32>}
+        if inputs['concepts'] is None:
+            inputs["concepts"] = tf.constant([[0]])
+            inputs["responses"] = tf.constant([[0]])
 
         # the original code for Transformer-XL used shapes [len, bsz] but we want a unified interface in the library
         # so we transpose here from shape [bsz, len] to shape [len, bsz]
         if inputs["concepts"] is not None and inputs["inputs_embeds"] is not None:
             raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
         elif inputs["concepts"] is not None:
-            # print('inputs["input_ids"]',inputs["input_ids"].shape)
-            # print('input[]"concepts"]',inputs["concepts"])
-            # inputs["concepts"] = tf.transpose(inputs["concepts"], perm=(1, 0))
-            # inputs["responses"] = tf.transpose(inputs["responses"], perm=(1, 0))
+            
+            # bsz,tgt 인풋일 떄 
+            inputs["concepts"] = tf.transpose(inputs["concepts"], perm=(1, 0)) #
+            inputs["responses"] = tf.transpose(inputs["responses"], perm=(1, 0))
             # print('inputs["input_ids2222222"]',inputs["input_ids"].shape)
 
             qlen, bsz = shape_list(inputs["concepts"])
@@ -1163,6 +1169,7 @@ class TFTransfoXLMLMMainLayer(tf.keras.layers.Layer):
 
         if inputs["inputs_embeds"] is not None:
             word_emb = inputs["inputs_embeds"]
+        
         else:
             word_emb_C = self.word_emb_C(inputs["concepts"])
             word_emb_R = self.word_emb_R(inputs["responses"])
@@ -1173,7 +1180,9 @@ class TFTransfoXLMLMMainLayer(tf.keras.layers.Layer):
             inputs["mems"] = inputs["mems"][0]
         
         mlen = shape_list(inputs["mems"][0])[0] if inputs["mems"] is not None else 0
-  
+        print('mlen',mlen)
+        print('qlen',qlen)
+
         klen = mlen + qlen
 
         # attn_mask = tf.ones([qlen, qlen])
@@ -1250,14 +1259,14 @@ class TFTransfoXLMLMMainLayer(tf.keras.layers.Layer):
         core_out = self.drop(core_out, training=inputs["training"]) #마지막 레이어의 아웃풋  드랍아웃 후에도 shape=(10, 36, 128)
         
         new_mems = self._update_mems(hids, inputs["mems"], mlen, qlen)  # 각 레이어의 아웃풋과 레이어의 수에 맞게 생성된 메모리가 결합된다. 
+        core_out = tf.transpose(core_out, perm=(1, 0, 2)) # bsz,tgt 인풋일 떄 
 
-        x = self.linear(core_out)
+        x = self.linear(core_out) 
         x = self.activation(x) # gelu
         x = self.layer_norm(x)
         core_out = self.decoder(x) #output = responses size
 
         # We transpose back here to shape [bsz, len, hidden_dim]
-        # core_out = tf.transpose(core_out, perm=(1, 0, 2)) # (36,10,128)
 
        
 
@@ -1748,6 +1757,7 @@ class TFTransfoXLMLMHeadModel(TFTransfoXLPreTrainedModel):
         training=False,
         **kwargs,
     ):
+        
     
         inputs = input_processing_MLM(
             func=self.call,
@@ -1763,10 +1773,16 @@ class TFTransfoXLMLMHeadModel(TFTransfoXLPreTrainedModel):
             training=training,
             kwargs_call=kwargs,
         )
+
+        # print('inputs',inputs)
+        # if inputs["concepts"] is not None:
+        #     bsz, tgt_len = shape_list(inputs["concepts"])[:2]
+        # else:
+        #     bsz, tgt_len = shape_list(inputs["inputs_embeds"])[:2]
         if inputs["concepts"] is not None:
             bsz, tgt_len = shape_list(inputs["concepts"])[:2]
         else:
-            bsz, tgt_len = shape_list(inputs["inputs_embeds"])[:2]
+            pass
 
         transformer_outputs = self.transformer(
             inputs["concepts"],

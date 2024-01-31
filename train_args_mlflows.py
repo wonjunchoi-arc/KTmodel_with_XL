@@ -10,6 +10,15 @@ import datetime
 import argparse
 import logging
 from tensorboard.plugins import projector
+import numpy as np
+
+import mlflow
+from mlflow.models import ModelSignature
+from mlflow.types.schema import Schema, TensorSpec
+
+
+
+
 
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
@@ -31,10 +40,8 @@ test_auc = tf.keras.metrics.AUC()
 logging.basicConfig(level=logging.INFO)
 
 def load_TFdataset(config_xl) :
-    # tf_train_dir = config_xl.tf_data_dir+'/train'
     tf_train_dir = config_xl.tf_data_dir+'/{}'.format(config_xl.mode)+'/train'
     tf_test_dir = config_xl.tf_data_dir+'/{}'.format(config_xl.mode)+'/test'
-    # tf_test_dir = config_xl.tf_data_dir+'/test'
     train_dataset = tf.data.experimental.load(tf_train_dir)
     test_dataset = tf.data.experimental.load(tf_test_dir)
     with open(config_xl.tf_data_dir+"/dkeyid2idx.pkl", "rb") as file:
@@ -43,17 +50,6 @@ def load_TFdataset(config_xl) :
     return train_dataset,test_dataset,dkeyid2idx
 
 
-
-def make_tensorboard_summary_writer(config_xl):
-    if not os.path.exists(config_xl.tensorboard_log_dir):
-        os.makedirs(config_xl.tensorboard_log_dir)     
-    train_log_dir = config_xl.tensorboard_log_dir+'/'+ current_time +'{}ep_{}mem_{}/train'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)
-    test_log_dir = config_xl.tensorboard_log_dir+'/'+ current_time +'{}ep_{}mem_{}/test'.format(config_xl.epoch, config_xl.mem_len,config_xl.mode)
-    train_summary_writer = tf.summary.create_file_writer(train_log_dir)
-    test_summary_writer = tf.summary.create_file_writer(test_log_dir)
-    logging.info('tensorboard_log_dir:  %s',config_xl.tensorboard_log_dir)
-
-    return train_summary_writer, test_summary_writer
 
 
 
@@ -106,13 +102,14 @@ def train_step(model, data1,data2, target, mems, optimizer):
     return mems,mean_loss
 
 
-def evaluate(model,test_dataset,test_summary_writer,config_xl):
+def evaluate(model,test_dataset,config_xl):
     total_loss = 0.0
     num_batches = 0
     evaluation_metrics = []
     test_mems = None
 
     for input_data, masked_responses, responses in tqdm(test_dataset, desc='eval'):
+
         outputs = model(concepts=input_data, responses=masked_responses, labels=responses, mems=test_mems, training=False)
         logit = outputs.logit
         test_mems = outputs.mems
@@ -147,14 +144,12 @@ def evaluate(model,test_dataset,test_summary_writer,config_xl):
         total_loss += mean_loss.numpy()
         num_batches += 1
 
-        
-        with test_summary_writer.as_default():
-            tf.summary.scalar('loss', test_loss.result(), step=num_batches)
-            tf.summary.scalar('accuracy', test_accuracy.result(), step=num_batches)
-            tf.summary.scalar('precision', test_precision.result(), step=num_batches)
-            tf.summary.scalar('recall', test_recall.result(), step=num_batches)
-            tf.summary.scalar('f1_score', f1_score, step=num_batches)
-            tf.summary.scalar('auc', test_auc.result(), step=num_batches)
+        mlflow.log_metric('loss', test_loss.result(), step=num_batches)
+        mlflow.log_metric('accuracy', test_accuracy.result(), step=num_batches)
+        mlflow.log_metric('precision', test_precision.result(), step=num_batches)
+        mlflow.log_metric('recall', test_recall.result(), step=num_batches)
+        mlflow.log_metric('f1_score', f1_score, step=num_batches)
+        mlflow.log_metric('auc', test_auc.result(), step=num_batches)
 
     # 평균 정밀도, 재현율, F1 점수를 계산합니다.
     average_precision = test_precision.result().numpy()
@@ -191,7 +186,7 @@ def Make_embedding_projector(model,config_xl, dkeyid2idx,):
 
 
 
-def train(train_dataset,train_summary_writer,config_xl):
+def train(train_dataset,config_xl):
     try:
         learning_rate = CustomSchedule(config_xl.d_model)
 
@@ -212,37 +207,69 @@ def train(train_dataset,train_summary_writer,config_xl):
                 if num_batches % 100 == 0:
                     loss_values.append(loss_value.numpy())
                     print(f'Epoch {epoch + 1} Batch {num_batches} Loss {loss_value.numpy()}')
-                with train_summary_writer.as_default():
-                    tf.summary.scalar('loss', train_loss.result(), step=num_batches)
-                    tf.summary.scalar('accuracy', train_accuracy.result(), step=num_batches)
-                    tf.summary.scalar('auc', train_auc.result(), step=num_batches)
+                    mlflow.log_metric('loss', train_loss.result(), step=num_batches)
+                    mlflow.log_metric('accuracy', train_accuracy.result(), step=num_batches)
+                    mlflow.log_metric('auc', train_auc.result(), step=num_batches)
 
-        # save model            
-        if not os.path.exists(config_xl.model_save_dir):
-            os.makedirs(config_xl.model_save_dir)
-        model_saved_dir =config_xl.model_save_dir+'/'+current_time+'_{}ep_{}mem_{}.ckpt/my_checkpoint'.format(config_xl.epoch, config_xl.mem_len, config_xl.mode)       
-        model.save_weights(model_saved_dir)
-        logging.info('model_save_dir : %s',model_saved_dir)
-        logging.info('model.summary: %s',model.summary()) 
 
     except Exception as e:
         logging.error(f"Error: {e}")
 
     return model
         
+class ExportModel(tf.Module):
+  def __init__(self, input_processor, classifier):
+    self.input_processor = input_processor
+    self.classifier = classifier
 
+  @tf.function(input_signature=[{
+      'sentence1': tf.TensorSpec(shape=[None], dtype=tf.string),
+      'sentence2': tf.TensorSpec(shape=[None], dtype=tf.string)}])
+  def __call__(self, inputs):
+    packed = self.input_processor(inputs)
+    logits =  self.classifier(packed, training=False)
+    result_cls_ids = tf.argmax(logits)
+    return {
+        'logits': logits,
+        'class_id': result_cls_ids,
+        'class': tf.gather(
+            tf.constant(info.features['label'].names),
+            result_cls_ids)
+    }
 
 def main(config_xl) -> None :
     train_dataset,test_dataset,dkeyid2idx=load_TFdataset(config_xl)
-        
-    train_summary_writer, test_summary_writer = make_tensorboard_summary_writer(config_xl)
-
-    model =train(train_dataset,train_summary_writer,config_xl)
-    test_loss,test_acc,test_precision, test_recall, test_f1_score = evaluate(model, test_dataset,test_summary_writer,config_xl)
+    model =train(train_dataset.take(1),config_xl)
+    test_loss,test_acc,test_precision, test_recall, test_f1_score = evaluate(model, test_dataset,config_xl)
     Make_embedding_projector(model,config_xl,dkeyid2idx)
     logging.info('test_loss:{},test_acc:{},test_precision:{}, test_recall:{}, test_f1_score:{}'.format(test_loss,test_acc,test_precision, test_recall, test_f1_score))
- 
+    
+    # Infer the model signature
+    infer_mem = None
+    input_data, masked_responses, responses = next(iter(train_dataset))
+    outputs = model(concepts=input_data, responses=masked_responses, labels=responses, mems=infer_mem, training=False)
+    logit = outputs.logit
+    logit_value = tf.reshape(logit, [-1, config_xl.R_vocab_size])
+    predicted_labels = tf.argmax(logit_value, axis=1)
 
+    transposed_input = tf.transpose(input_data)
+    transposed_response = tf.transpose(masked_responses)
+    # 모델 입력과 출력에 대한 TensorSpec 정의
+    input_schema = Schema(
+    [
+        TensorSpec(np.dtype(np.int32), (-1,len(transposed_input[0].numpy())), "input_data"),
+        TensorSpec(np.dtype(np.int32), (-1,len(transposed_response[0].numpy())), "responses"),
+    ]
+)
+    output_schema = Schema([TensorSpec(np.dtype(np.int32),predicted_labels.numpy().shape, 'predicted_labels')])
+
+
+    signature = ModelSignature(input_schema)
+
+
+    # Log the model
+    model.save('mymodel')
+    # mlflow.tensorflow.log_model(model, "model", signature=signature,registered_model_name="tracking-quickstart")
 
 if __name__ == "__main__":
 
@@ -261,9 +288,7 @@ if __name__ == "__main__":
     parser.add_argument('--epoch', type=int, required=True, default=3)
     parser.add_argument('--mode', type=str, required=True, default='concepts',help='concepts or questions')
     parser.add_argument('--tf_data_dir', type=str, required=True, default='/home/jun/workspace/KT/data/ednet/TF_DATA')
-    parser.add_argument('--tensorboard_log_dir', type=str, required=True, default='/home/jun/workspace/KT/logs/gradient_tape')
-    parser.add_argument('--tensorboard_emb_log_dir', type=str, required=True, default='/home/jun/workspace/KT/logs/embedding',help='tensorboard embedding projection dictionary')
-    parser.add_argument('--model_save_dir', type=str, required=True, default='/home/jun/workspace/KT/save_model/')
+    parser.add_argument('--tensorboard_emb_log_dir', type=str, required=True, default='/home/jun/workspace/KT/logs/embedding/',help='tensorboard embedding projection dictionary')
     args = parser.parse_args()
 
 
@@ -274,9 +299,6 @@ if __name__ == "__main__":
         mem_len=args.mem_len,
         n_head=args.n_head,
         n_layer=args.n_layer,
-        # batch_size = args.batch_size,
-        # tgt_len = args.tgt_len,
-        # eos_token=args.eos_token,
         mask_token=args.mask_token,
         C_vocab_size=args.C_vocab_size,
         Q_vocab_size = args.Q_vocab_size,
@@ -284,11 +306,21 @@ if __name__ == "__main__":
         epoch = args.epoch,
         mode = args.mode, # concepts or questions 
         tf_data_dir = args.tf_data_dir,
-        tensorboard_log_dir = args.tensorboard_log_dir,
         tensorboard_emb_log_dir = args.tensorboard_emb_log_dir,
-        model_save_dir = args.model_save_dir
     )
-    logging.info('config_xl:  %s',config_xl)
+    
+    # Set our tracking server uri for logging
+    # mlflow.set_tracking_uri(uri="http://127.0.0.1:8080")
+
+    # Create a new MLflow Experiment
+    mlflow.set_experiment("MLflow Quickstart")
+
+    # Start an MLflow run
+    with mlflow.start_run():
+        # Log the hyperparameters
+        mlflow.log_params(config_xl.to_dict())
 
 
-    main(config_xl)
+
+
+        main(config_xl)
