@@ -97,26 +97,28 @@ def Slice_the_test(test:dict,args)->():
 
 
 def reshape_transpose_train_tensor(train_sliced_cseqs,train_sliced_qseqs,sliced_r_mask,sliced_labels,args):
-    new_shape = (args.batch_size, -1)  # 나머지 차원은 자동으로 계산됨
+    new_shape = (-1,args.tgt_len)  # 나머지 차원은 자동으로 계산됨
 
-    train_cseq_reshaped = tf.reshape(train_sliced_cseqs, new_shape)
     train_qseq_reshaped = tf.reshape(train_sliced_qseqs, new_shape)
+    train_cseq_reshaped = tf.reshape(train_sliced_cseqs, new_shape)
+
     train_r_mask_reshaped = tf.reshape(sliced_r_mask, new_shape)
     train_labels_reshaped = tf.reshape(sliced_labels, new_shape)
 
     # Because of the einsum calculation of the xl model dataset batch, tgt_len dimension changed
-    train_cseq_transposed = tf.transpose(train_cseq_reshaped)
-    train_qseq_transposed = tf.transpose(train_qseq_reshaped)
-    train_r_mask_transposed = tf.transpose(train_r_mask_reshaped)
-    train_labels_transposed = tf.transpose(train_labels_reshaped)
+    # train_cseq_transposed = tf.transpose(train_cseq_reshaped)
+    # train_qseq_transposed = tf.transpose(train_qseq_reshaped)
+    # train_r_mask_transposed = tf.transpose(train_r_mask_reshaped)
+    # train_labels_transposed = tf.transpose(train_labels_reshaped)
 
-    return train_cseq_transposed,train_qseq_transposed,train_r_mask_transposed,train_labels_transposed
+    # return train_cseq_transposed,train_qseq_transposed,train_r_mask_transposed,train_labels_transposed
+    return train_qseq_reshaped,train_cseq_reshaped,train_r_mask_reshaped, train_labels_reshaped
     
     
 
 def reshape_transpose_test_tensor(test_sliced_cseqs,test_sliced_qseqs,test_sliced_r_masked_seq,test_sliced_labels,args):
    
-    new_shape = (args.batch_size, -1)  # 나머지 차원은 자동으로 계산됨
+    new_shape = (-1,args.tgt_len)  # 나머지 차원은 자동으로 계산됨
 
     test_qseq_reshaped = tf.reshape(test_sliced_qseqs, new_shape)
     test_cseq_reshaped = tf.reshape(test_sliced_cseqs, new_shape)
@@ -124,12 +126,13 @@ def reshape_transpose_test_tensor(test_sliced_cseqs,test_sliced_qseqs,test_slice
     test_labels_reshaped = tf.reshape(test_sliced_labels, new_shape)
 
 
-    test_qseq_transposed = tf.transpose(test_qseq_reshaped)
-    test_cseq_transposed = tf.transpose(test_cseq_reshaped)
-    test_r_masked_transposed = tf.transpose(test_r_masked_seq_reshaped)
-    test_labels_transposed = tf.cast(tf.transpose(test_labels_reshaped),tf.int64)
+    # test_qseq_transposed = tf.transpose(test_qseq_reshaped)
+    # test_cseq_transposed = tf.transpose(test_cseq_reshaped)
+    # test_r_masked_transposed = tf.transpose(test_r_masked_seq_reshaped)
+    # test_labels_transposed = tf.cast(tf.transpose(test_labels_reshaped),tf.int64)
 
-    return test_qseq_transposed, test_cseq_transposed ,test_r_masked_transposed, test_labels_transposed
+    # return test_qseq_transposed, test_cseq_transposed ,test_r_masked_transposed, test_labels_transposed
+    return test_qseq_reshaped, test_cseq_reshaped, test_r_masked_seq_reshaped, test_labels_reshaped
 
 
 def main(args):
@@ -169,35 +172,43 @@ def main(args):
     test_sliced_cseqs,test_sliced_qseqs,test_sliced_r_masked_seq,test_sliced_labels=Slice_the_test(test,args)
     logging.info('slice data complited')
 
-    train_cseq_transposed,train_qseq_transposed,train_r_mask_transposed,train_labels_transposed=reshape_transpose_train_tensor(train_sliced_cseqs,train_sliced_qseqs,sliced_r_mask,sliced_labels,args)
-    test_qseq_transposed, test_cseq_transposed ,test_r_masked_transposed, test_labels_transposed=reshape_transpose_test_tensor(test_sliced_cseqs,test_sliced_qseqs,test_sliced_r_masked_seq,test_sliced_labels,args)
+    # train_cseq_transposed,train_qseq_transposed,train_r_mask_transposed,train_labels_transposed=reshape_transpose_train_tensor(train_sliced_cseqs,train_sliced_qseqs,sliced_r_mask,sliced_labels,args)
+    # test_qseq_transposed, test_cseq_transposed ,test_r_masked_transposed, test_labels_transposed=reshape_transpose_test_tensor(test_sliced_cseqs,test_sliced_qseqs,test_sliced_r_masked_seq,test_sliced_labels,args)
+    train_qseq_reshaped,train_cseq_reshaped ,train_r_mask_reshaped, train_labels_reshaped=reshape_transpose_train_tensor(train_sliced_cseqs,train_sliced_qseqs,sliced_r_mask,sliced_labels,args)
+    test_qseq_reshaped, test_cseq_reshaped, test_r_masked_seq_reshaped, test_labels_reshaped=reshape_transpose_test_tensor(test_sliced_cseqs,test_sliced_qseqs,test_sliced_r_masked_seq,test_sliced_labels,args)
     logging.info('reshape and transpose complited')
 
     #make tf.dataset
-    if args.mode =='question':
-        train_dataset = tf.data.Dataset.from_tensor_slices(
-        (train_qseq_transposed, train_r_mask_transposed, train_labels_transposed))
-        test_dataset = tf.data.Dataset.from_tensor_slices(
-        (test_qseq_transposed, test_r_masked_transposed, test_labels_transposed))
-    else:
-        train_dataset = tf.data.Dataset.from_tensor_slices(
-        (train_cseq_transposed, train_r_mask_transposed, train_labels_transposed))
-        test_dataset = tf.data.Dataset.from_tensor_slices(
-        (test_cseq_transposed, test_r_masked_transposed, test_labels_transposed))
+    train_q_dataset = tf.data.Dataset.from_tensor_slices(
+    (train_qseq_reshaped, train_r_mask_reshaped, train_labels_reshaped))
+    test_q_dataset = tf.data.Dataset.from_tensor_slices(
+    (test_qseq_reshaped, test_r_masked_seq_reshaped, test_labels_reshaped))
+
+    train_c_dataset = tf.data.Dataset.from_tensor_slices(
+    (train_cseq_reshaped, train_r_mask_reshaped, train_labels_reshaped))
+    test_c_dataset = tf.data.Dataset.from_tensor_slices(
+    (test_cseq_reshaped, test_r_masked_seq_reshaped, test_labels_reshaped))
 
 
 
-    train_dataset =train_dataset.batch(args.tgt_len)
-    test_dataset =test_dataset.batch(args.tgt_len)
+    train_q_dataset =train_q_dataset.batch(args.batch_size)
+    test_q_dataset =test_q_dataset.batch(args.batch_size)
+
+
+    train_c_dataset =train_c_dataset.batch(args.batch_size)
+    test_c_dataset =test_c_dataset.batch(args.batch_size)
 
     
-    tf.data.experimental.save(train_dataset, args.tf_data_dir+'/{}'.format(args.mode)+'/train')
-    tf.data.experimental.save(test_dataset, args.tf_data_dir+'/{}'.format(args.mode)+'/test')
+    tf.data.experimental.save(train_q_dataset, args.tf_data_dir+'/questions/train')
+    tf.data.experimental.save(test_q_dataset, args.tf_data_dir+'/questions/test')
+
+    tf.data.experimental.save(train_c_dataset, args.tf_data_dir+'/concepts/train')
+    tf.data.experimental.save(test_c_dataset, args.tf_data_dir+'/concepts/test')
     with open(args.tf_data_dir+"/dkeyid2idx.pkl", "wb") as file:
         pickle.dump(dkeyid2idx, file)
     logging.info('Making Tf.dataset is complited')
 
-    return args.tf_data_dir+'/{}'.format(args.mode)+'/train', args.tf_data_dir+'/{}'.format(args.mode)+'/test'
+    return args.tf_data_dir
     
 
 if __name__ == "__main__":
@@ -210,12 +221,11 @@ if __name__ == "__main__":
     parser.add_argument('--mask_token', type=int, required=False, default=3)
     parser.add_argument('--test_ratio', type=float, required=False, default=0.2)
     parser.add_argument('--tf_data_dir', type=str, required=True, default='/home/jun/workspace/KT/data/ednet/TF_DATA')
-    parser.add_argument('--mode', type=str, required=True, default='concepts', help="concepts or questions")
 
     args = parser.parse_args()
 
-    if not (os.path.exists(args.tf_data_dir)) & (os.path.exists(args.tf_data_dir+'/'+args.mode)):
-        logging.info('tf_data_dir : %s',os.path.exists(args.tf_data_dir+'/'+args.mode))
+    if not os.path.exists(args.tf_data_dir):
+        logging.info('tf_data_dir : %s', args.tf_data_dir)
         os.makedirs(args.tf_data_dir) 
         
-        tf_train_dir, tf_test_dir=main(args)
+        tf_data_dir =main(args)
