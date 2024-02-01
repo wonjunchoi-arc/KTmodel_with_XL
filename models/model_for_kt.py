@@ -401,9 +401,7 @@ class TFRelPartialLearnableMultiHeadAttn(tf.keras.layers.Layer):
 
     def call(self, w, r, attn_mask, mems, head_mask, output_attentions, training=False):
         qlen, rlen, bsz = shape_list(w)[0], shape_list(r)[0], shape_list(w)[1]
-        # print('w는?',w.shape) #shape=(60, 70, 1024)
-        # print('r는?',r.shape) #shape=(120, 1, 1024)
-        # print('attn_mask는?',attn_mask) #shape=(60, 120)
+       
       
         if mems is not None:
             
@@ -995,8 +993,8 @@ class TFTransfoXLMLMMainLayer(tf.keras.layers.Layer):
         self.untie_r = config.untie_r
 
         vocab_size = config.C_vocab_size if config.mode == 'concepts' else config.Q_vocab_size        
-        self.word_emb_C  = tf.keras.layers.Embedding(input_dim=vocab_size, output_dim=config.d_embed)
-        self.word_emb_R  = tf.keras.layers.Embedding(input_dim=config.R_vocab_size, output_dim=config.d_embed)
+        self.word_emb_C  = tf.keras.layers.Embedding(input_dim=vocab_size+4, output_dim=config.d_embed)
+        self.word_emb_R  = tf.keras.layers.Embedding(input_dim=config.R_vocab_size+2, output_dim=config.d_embed)
         self.linear = tf.keras.layers.Dense(self.config.hidden_size)
         self.activation = tf.keras.layers.Activation('gelu')
         self.layer_norm = tf.keras.layers.LayerNormalization(epsilon=self.config.layer_norm_epsilon)
@@ -1139,12 +1137,11 @@ class TFTransfoXLMLMMainLayer(tf.keras.layers.Layer):
         if inputs["concepts"] is not None and inputs["inputs_embeds"] is not None:
             raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
         elif inputs["concepts"] is not None:
-            
             # bsz,tgt 인풋일 떄 
             inputs["concepts"] = tf.transpose(inputs["concepts"], perm=(1, 0)) #
             inputs["responses"] = tf.transpose(inputs["responses"], perm=(1, 0))
-            # print('inputs["input_ids2222222"]',inputs["input_ids"].shape)
 
+            # print('inputs["input_ids2222222"]',inputs["input_ids"].shape)
             qlen, bsz = shape_list(inputs["concepts"])
             # print('inputs["input_ids"]',(qlen, bsz))  #(3:bsz, 36:target len)
         elif inputs["inputs_embeds"] is not None:
@@ -1180,8 +1177,6 @@ class TFTransfoXLMLMMainLayer(tf.keras.layers.Layer):
             inputs["mems"] = inputs["mems"][0]
         
         mlen = shape_list(inputs["mems"][0])[0] if inputs["mems"] is not None else 0
-        print('mlen',mlen)
-        print('qlen',qlen)
 
         klen = mlen + qlen
 
