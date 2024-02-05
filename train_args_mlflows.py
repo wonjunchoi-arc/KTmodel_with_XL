@@ -17,7 +17,34 @@ from mlflow.models import ModelSignature
 from mlflow.types.schema import Schema, TensorSpec
 
 
+parser = argparse.ArgumentParser(description='TransfoXL config')
+parser.add_argument('--d_embed', type=int, required=False, default=128, help='Dimensionality of the embeddings')
+parser.add_argument('--d_head', type=int, required=False,default=32,help='Dimensionality of the model’s heads')
+parser.add_argument('--d_model', type=int, required=False,default=128 , help='Dimensionality of the model’s hidden states.')
+parser.add_argument('--d_inner', type=int, default=4096, help='Inner dimension in FF')
+parser.add_argument('--mask_token', type=int, required=False, default=3)
+parser.add_argument('--eos_token', type=int, required=False, default=2)
+parser.add_argument('--batch_size', type=int, required=False, default=65)
+parser.add_argument('--tgt_len', type=int, required=False, default=140)
+parser.add_argument('--mem_len', type=int, required=False,default=600,help='Length of the retained previous heads')
+parser.add_argument('--n_head', type=int, required=False, default=8,help='Number of attention heads')
+parser.add_argument('--n_layer', type=int, required=False, default=6, help='Number of hidden layers in the Transformer encoder')
+parser.add_argument('--C_vocab_size', type=int, required=False, default=188,help='how many concepts')
+parser.add_argument('--Q_vocab_size', type=int, required=False, default=12277, help='how many questions')
+parser.add_argument('--R_vocab_size', type=int, required=False, default=2)
+parser.add_argument('--epoch', type=int, required=False, default=1)
+parser.add_argument('--mode', type=str, required=True, default='concepts',help='concepts or questions')
+parser.add_argument('--tf_data_dir', type=str, required=False, default='/home/jun/workspace/KT/data/ednet/100_sam')
+parser.add_argument('--devices', type=str, required=True, default='gpu')
+parser.add_argument('--tensorboard_log_dir', type=str, required=False, default='/home/jun/workspace/KT/logs/gradient_tape')
+parser.add_argument('--tensorboard_emb_log_dir', type=str, required=False, default='/home/jun/workspace/KT/logs/embedding',help='tensorboard embedding projection dictionary')
+parser.add_argument('--model_save_dir', type=str, required=False, default='/home/jun/workspace/KT/save_model')
+args = parser.parse_args()
 
+if args.devices == 'cpu':
+    os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+else:
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -144,12 +171,12 @@ def evaluate(model,test_dataset,config_xl):
         total_loss += mean_loss.numpy()
         num_batches += 1
 
-        mlflow.log_metric('loss', test_loss.result(), step=num_batches)
-        mlflow.log_metric('accuracy', test_accuracy.result(), step=num_batches)
-        mlflow.log_metric('precision', test_precision.result(), step=num_batches)
-        mlflow.log_metric('recall', test_recall.result(), step=num_batches)
-        mlflow.log_metric('f1_score', f1_score, step=num_batches)
-        mlflow.log_metric('auc', test_auc.result(), step=num_batches)
+        mlflow.log_metric('test_loss', test_loss.result(), step=num_batches)
+        mlflow.log_metric('test_accuracy', test_accuracy.result(), step=num_batches)
+        mlflow.log_metric('test_precision', test_precision.result(), step=num_batches)
+        mlflow.log_metric('test_recall', test_recall.result(), step=num_batches)
+        mlflow.log_metric('test_f1_score', f1_score, step=num_batches)
+        mlflow.log_metric('test_auc', test_auc.result(), step=num_batches)
 
     # 평균 정밀도, 재현율, F1 점수를 계산합니다.
     average_precision = test_precision.result().numpy()
@@ -204,12 +231,12 @@ def train(train_dataset,config_xl):
                 mems, loss_value = train_step(model, input_data,masked_responses, responses, mems, optimizer)
                 num_batches += 1
                 total_loss += loss_value.numpy()
-                if num_batches % 100 == 0:
-                    loss_values.append(loss_value.numpy())
-                    print(f'Epoch {epoch + 1} Batch {num_batches} Loss {loss_value.numpy()}')
-                    mlflow.log_metric('loss', train_loss.result(), step=num_batches)
-                    mlflow.log_metric('accuracy', train_accuracy.result(), step=num_batches)
-                    mlflow.log_metric('auc', train_auc.result(), step=num_batches)
+                # if num_batches % 100 == 0:
+                loss_values.append(loss_value.numpy())
+                print(f'Epoch {epoch + 1} Batch {num_batches} Loss {loss_value.numpy()}')
+                mlflow.log_metric('loss', train_loss.result(), step=num_batches)
+                mlflow.log_metric('accuracy', train_accuracy.result(), step=num_batches)
+                mlflow.log_metric('auc', train_auc.result(), step=num_batches)
 
 
     except Exception as e:
@@ -217,48 +244,28 @@ def train(train_dataset,config_xl):
 
     return model
         
-class ExportModel(tf.Module):
-  def __init__(self, input_processor, classifier):
-    self.input_processor = input_processor
-    self.classifier = classifier
 
-  @tf.function(input_signature=[{
-      'sentence1': tf.TensorSpec(shape=[None], dtype=tf.string),
-      'sentence2': tf.TensorSpec(shape=[None], dtype=tf.string)}])
-  def __call__(self, inputs):
-    packed = self.input_processor(inputs)
-    logits =  self.classifier(packed, training=False)
-    result_cls_ids = tf.argmax(logits)
-    return {
-        'logits': logits,
-        'class_id': result_cls_ids,
-        'class': tf.gather(
-            tf.constant(info.features['label'].names),
-            result_cls_ids)
-    }
 
 def main(config_xl) -> None :
     train_dataset,test_dataset,dkeyid2idx=load_TFdataset(config_xl)
-    model =train(train_dataset.take(1),config_xl)
+    model =train(train_dataset.take(10),config_xl)
     test_loss,test_acc,test_precision, test_recall, test_f1_score = evaluate(model, test_dataset,config_xl)
-    Make_embedding_projector(model,config_xl,dkeyid2idx)
+    # Make_embedding_projector(model,config_xl,dkeyid2idx)
     logging.info('test_loss:{},test_acc:{},test_precision:{}, test_recall:{}, test_f1_score:{}'.format(test_loss,test_acc,test_precision, test_recall, test_f1_score))
     
     # Infer the model signature
-    infer_mem = None
-    input_data, masked_responses, responses = next(iter(train_dataset))
-    outputs = model(concepts=input_data, responses=masked_responses, labels=responses, mems=infer_mem, training=False)
+    input_data, masked_responses, responses = next(iter(test_dataset))
+    outputs = model(concepts=input_data, responses=masked_responses, labels=responses, mems=None, training=False)
     logit = outputs.logit
     logit_value = tf.reshape(logit, [-1, config_xl.R_vocab_size])
     predicted_labels = tf.argmax(logit_value, axis=1)
 
-    transposed_input = tf.transpose(input_data)
-    transposed_response = tf.transpose(masked_responses)
+    # transposed_response = tf.transpose(masked_responses)
     # 모델 입력과 출력에 대한 TensorSpec 정의
     input_schema = Schema(
     [
-        TensorSpec(np.dtype(np.int32), (-1,len(transposed_input[0].numpy())), "input_data"),
-        TensorSpec(np.dtype(np.int32), (-1,len(transposed_response[0].numpy())), "responses"),
+        TensorSpec(np.dtype(np.int32), (-1,len(input_data[1].numpy())), "input_data"),
+        TensorSpec(np.dtype(np.int32), (-1,len(responses[1].numpy())), "responses"),
     ]
 )
     output_schema = Schema([TensorSpec(np.dtype(np.int32),predicted_labels.numpy().shape, 'predicted_labels')])
@@ -268,59 +275,59 @@ def main(config_xl) -> None :
 
 
     # Log the model
-    model.save('mymodel')
+    model_info = mlflow.tensorflow.log_model(
+        model=model,
+        artifact_path="iris_model",
+        signature=signature,
+        # input_example={"first_input": input_data, "second_input": masked_responses},
+        # input_example=[input_data,masked_responses],
+        registered_model_name="tracking-quickstart",
+    )
+    logging.info('model_info.model_uri: %s', model_info.model_uri)
     # mlflow.tensorflow.log_model(model, "model", signature=signature,registered_model_name="tracking-quickstart")
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(description='TransfoXL config')
-    parser.add_argument('--d_embed', type=int, required=False, default=128, help='Dimensionality of the embeddings')
-    parser.add_argument('--d_head', type=int, required=False,default=32,help='Dimensionality of the model’s heads')
-    parser.add_argument('--d_model', type=int, required=False,default=128 , help='Dimensionality of the model’s hidden states.')
-    parser.add_argument('--d_inner', type=int, default=4096, help='Inner dimension in FF')
-    parser.add_argument('--mask_token', type=int, required=False, default=3)
-    parser.add_argument('--mem_len', type=int, required=True,default=600,help='Length of the retained previous heads')
-    parser.add_argument('--n_head', type=int, required=False, default=8,help='Number of attention heads')
-    parser.add_argument('--n_layer', type=int, required=False, default=6, help='Number of hidden layers in the Transformer encoder')
-    parser.add_argument('--C_vocab_size', type=int, required=False, default=188,help='how many concepts')
-    parser.add_argument('--Q_vocab_size', type=int, required=False, default=12277, help='how many questions')
-    parser.add_argument('--R_vocab_size', type=int, required=False, default=2)
-    parser.add_argument('--epoch', type=int, required=True, default=3)
-    parser.add_argument('--mode', type=str, required=True, default='concepts',help='concepts or questions')
-    parser.add_argument('--tf_data_dir', type=str, required=True, default='/home/jun/workspace/KT/data/ednet/TF_DATA')
-    parser.add_argument('--tensorboard_emb_log_dir', type=str, required=True, default='/home/jun/workspace/KT/logs/embedding/',help='tensorboard embedding projection dictionary')
-    args = parser.parse_args()
-
-
     config_xl = TransfoXLConfig(
-        d_embed=args.d_embed,
-        d_head = args.d_head,
-        d_model=args.d_model,
-        mem_len=args.mem_len,
-        n_head=args.n_head,
-        n_layer=args.n_layer,
-        mask_token=args.mask_token,
-        C_vocab_size=args.C_vocab_size,
-        Q_vocab_size = args.Q_vocab_size,
-        R_vocab_size = args.R_vocab_size,
-        epoch = args.epoch,
-        mode = args.mode, # concepts or questions 
-        tf_data_dir = args.tf_data_dir,
-        tensorboard_emb_log_dir = args.tensorboard_emb_log_dir,
-    )
-    
+            d_embed=args.d_embed,
+            d_head = args.d_head,
+            d_model=args.d_model,
+            mem_len=args.mem_len,
+            n_head=args.n_head,
+            n_layer=args.n_layer,
+            eos_token = args.eos_token,
+            mask_token=args.mask_token,
+            batch_size=args.batch_size,
+            tgt_len=args.tgt_len,
+            C_vocab_size=args.C_vocab_size,
+            Q_vocab_size = args.Q_vocab_size,
+            R_vocab_size = args.R_vocab_size,
+            epoch = args.epoch,
+            mode = args.mode, # concepts or questions 
+            tf_data_dir = args.tf_data_dir,
+            tensorboard_log_dir = args.tensorboard_log_dir,
+            tensorboard_emb_log_dir = args.tensorboard_emb_log_dir,
+            model_save_dir = args.model_save_dir
+        )
+ 
+    logging.info('config_xl:  %s',config_xl)
     # Set our tracking server uri for logging
     # mlflow.set_tracking_uri(uri="http://127.0.0.1:8080")
 
     # Create a new MLflow Experiment
-    mlflow.set_experiment("MLflow Quickstart")
+    mlflow.set_experiment("MLflow Test")
 
     # Start an MLflow run
     with mlflow.start_run():
+        #set a run name
+        mlflow.set_tag("mlflow.runName", '{}ep_{}mem_{}'.format(args.epoch,args.mem_len, args.mode))
+        
+        # Set a tag that we can use to remind ourselves what this run was for
+        mlflow.set_tag("Training Info", '{}ep_{}mem_{}'.format(args.epoch,args.mem_len, args.mode))
+
         # Log the hyperparameters
         mlflow.log_params(config_xl.to_dict())
-
-
+        # mlflow.tensorflow.autolog()
 
 
         main(config_xl)
