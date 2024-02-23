@@ -1,15 +1,21 @@
 import os
 import pickle
 import tensorflow as tf
-import time
 from models.model_for_kt_TFlite import TFTransfoXLModel,TFTransfoXLLMHeadModel,TFTransfoXLMLMHeadModel
 from transformers import TransfoXLConfig
 from tensorflow.keras.utils import register_keras_serializable
+from tensorboard.plugins import projector
+
+import time
+import numpy as np
 from tqdm import tqdm
 import datetime
 import argparse
 import logging
-from tensorboard.plugins import projector
+
+import mlflow
+from mlflow.models import ModelSignature
+from mlflow.types.schema import Schema, TensorSpec,ParamSpec
 
 
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -74,8 +80,7 @@ class TransformerXLTrainer:
             mode=args.mode,
             tf_data_dir=args.tf_data_dir,
             tensorboard_emb_log_dir=args.tensorboard_emb_log_dir,
-            tensorboard_log_dir = args.tensorboard_log_dir,
-            model_save_dir = args.model_save_dir
+
             # mlflow_tracking_uri=args.mlflow_tracking_uri
         )
         self.learning_rate = CustomSchedule(self.config_xl.d_model)
@@ -95,25 +100,7 @@ class TransformerXLTrainer:
 
 
 
-    def make_tensorboard_summary_writer(self):
-        if not os.path.exists(self.config_xl.tensorboard_log_dir):
-            os.makedirs(self.config_xl.tensorboard_log_dir)     
-        train_log_dir = self.config_xl.tensorboard_log_dir+'/'+ current_time +'{}ep_{}mem_{}/train'.format(self.config_xl.epoch, self.config_xl.mem_len, self.config_xl.mode)
-        test_log_dir = self.config_xl.tensorboard_log_dir+'/'+ current_time +'{}ep_{}mem_{}/test'.format(self.config_xl.epoch, self.config_xl.mem_len,self.config_xl.mode)
-        train_summary_writer = tf.summary.create_file_writer(train_log_dir)
-        test_summary_writer = tf.summary.create_file_writer(test_log_dir)
-        logging.info('tensorboard_log_dir:  %s',self.config_xl.tensorboard_log_dir)
 
-        return train_summary_writer, test_summary_writer
-
-
-    
-#     @tf.function(input_signature=[
-#     tf.TensorSpec(shape=(None,None), dtype=tf.int32, name="data1"),
-#     tf.TensorSpec(shape=(None,None), dtype=tf.int32, name="data2"),
-#     tf.TensorSpec(shape=(None,None), dtype=tf.int32, name="target"),
-#     tf.TensorSpec(shape=(4,None,None,None), dtype=tf.float32, name="mems"),
-# ])
     @tf.function
     def train_step(self,data1,data2, target, mems) ->  (list, tf.Tensor):
         with tf.GradientTape() as tape:
@@ -139,10 +126,11 @@ class TransformerXLTrainer:
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
         
         return {'mems':tf.stack(mems, axis=0),
-                'mean_loss':mean_loss}
+                'mean_loss':mean_loss,
+                'logit':logit}
 
 
-    def evaluate(self,test_dataset,test_summary_writer):
+    def evaluate(self,test_dataset,):
         total_loss = 0.0
         num_batches = 0
         # test_mems = None
@@ -179,11 +167,11 @@ class TransformerXLTrainer:
             # f1_score = 2 * (precision * recall) / (precision + recall + 1e-7)
 
             # evaluation_metrics.append(test_accuracy.result().numpy())
+            mlflow.log_metric('test_loss', mean_loss, step=num_batches)
 
             total_loss += mean_loss.numpy()
             num_batches += 1
 
-            
             
 
         # 평균 정밀도, 재현율, F1 점수를 계산합니다.
@@ -193,12 +181,11 @@ class TransformerXLTrainer:
         average_f1_score = 2 * (average_precision * average_recall) / (average_precision + average_recall + 1e-7)
         average_auc=self.test_auc.result().numpy()
         
-        with test_summary_writer.as_default():
-            tf.summary.scalar('accuracy', self.test_accuracy.result(), step=num_batches)
-            tf.summary.scalar('precision', self.test_precision.result(), step=num_batches)
-            tf.summary.scalar('recall', self.test_recall.result(), step=num_batches)
-            tf.summary.scalar('f1_score', average_f1_score, step=num_batches)
-            tf.summary.scalar('auc', self.test_auc.result(), step=num_batches)
+        mlflow.log_metric('test_accuracy', average_accuracy)
+        mlflow.log_metric('test_precision', average_precision)
+        mlflow.log_metric('test_recall', average_recall)
+        mlflow.log_metric('test_f1_score', average_f1_score)
+        mlflow.log_metric('test_auc', average_auc)
         
         logging.info('test_acc:{}, average_f1_score:{}, average_auc:{}'.format(average_accuracy, average_f1_score,average_auc))
 
@@ -229,7 +216,7 @@ class TransformerXLTrainer:
 
 
 
-    def train_test(self,train_dataset,test_dataset,train_summary_writer,test_summary_writer):
+    def train_test(self,train_dataset,test_dataset):
         try:
             
             loss_values = []
@@ -243,6 +230,7 @@ class TransformerXLTrainer:
                     output = self.train_step(input_data,masked_responses, responses,mems)
                     mems=output['mems']
                     loss_value=output['mean_loss']
+                    logit = output['logit']
                     
                     # mems = tf.stack(mems, axis=0) # 4차원 텐서로 만들어서 넣자 리스트가 아닌
 
@@ -252,27 +240,58 @@ class TransformerXLTrainer:
                         loss_values.append(loss_value.numpy())
                         print(f'Epoch {epoch + 1} Batch {num_batches} Loss {loss_value.numpy()}')
                         
-                    with train_summary_writer.as_default():
-                        tf.summary.scalar('loss', self.train_loss.result(), step=num_batches)
-                        tf.summary.scalar('accuracy', self.train_accuracy.result(), step=num_batches)
-                        tf.summary.scalar('auc', self.train_auc.result(), step=num_batches)
+                        trainn_loss = float(self.train_loss.result().numpy())
+                        train_accuracy = float(self.train_accuracy.result().numpy())
+                        train_auc = float(self.train_auc.result().numpy())
+                    
 
-            self.evaluate(test_dataset,test_summary_writer)
+                        mlflow.log_metrics(dict(loss=trainn_loss), step=num_batches)
+                        mlflow.log_metrics(dict(accuracy=train_accuracy), step=num_batches)
+                        mlflow.log_metrics(dict(auc=train_auc), step=num_batches)
+                    
+                        
+            self.evaluate(test_dataset)
             
-            # save model            
-            if not os.path.exists(self.config_xl.model_save_dir):
-                os.makedirs(self.config_xl.model_save_dir)
-            model_saved_dir =self.config_xl.model_save_dir+'/'+current_time+'_{}ep_{}mem_{}.ckpt/my_checkpoint'.format(self.config_xl.epoch, self.config_xl.mem_len, self.config_xl.mode)       
+            #model input, output Schema
+            input_data, masked_responses, responses = next(iter(train_dataset))
+    
+            input_schema = Schema(
+            [
+                TensorSpec(np.dtype(input_data.numpy().dtype), (-1,input_data.numpy().shape[1]), "input_data"),
+                TensorSpec(np.dtype(masked_responses.numpy().dtype), (-1,masked_responses.numpy().shape[1]), "responses"),
+            ])
+                
+            output_schema = Schema([
+                TensorSpec(np.dtype(logit.numpy().dtype), (-1,logit.numpy().shape[1],logit.numpy().shape[2]), 'output_logit')])
+            
+            input_example = np.array([input_data.numpy(),masked_responses.numpy()])
+
+            signature = ModelSignature(inputs=input_schema,outputs=output_schema, )
+
+            # Log the model
+            model_info = mlflow.tensorflow.log_model(
+                model=self.model,
+                artifact_path="test_epoch{}".format(epoch),
+                signature=signature,
+                registered_model_name=args.registered_model_name,
+                input_example=input_example,
+                
+            )
+            
+            # # save model            
+            # if not os.path.exists(self.config_xl.model_save_dir):
+            #     os.makedirs(self.config_xl.model_save_dir)
+            # model_saved_dir =self.config_xl.model_save_dir+'/'+current_time+'_{}ep_{}mem_{}.ckpt/my_checkpoint'.format(self.config_xl.epoch, self.config_xl.mem_len, self.config_xl.mode)       
             # model.save_weights(model_saved_dir)
 
             # signatures = {"serving_default": self.train_step.get_concrete_function()}
             # print('signatures',self.train_step.get_concrete_function())
             
             # self.model.save_pretrained(model_saved_dir,saved_model=True,signatures=signatures)
-            self.model.save('tflite_directory_path/my_model')
+            # self.model.save('tflite_directory_path/my_model')
             # self.config_xl.save_pretrained(self.config_xl.model_save_dir+'/'+current_time+'_{}ep_{}mem_{}.ckpt'.format(self.config_xl.epoch, self.config_xl.mem_len, self.config_xl.mode))
 
-            logging.info('model_save_dir : %s',model_saved_dir)
+            # logging.info('model_save_dir : %s',model_saved_dir)
             logging.info('model.summary: %s',self.model.summary()) 
 
         except Exception as e:
@@ -281,10 +300,8 @@ class TransformerXLTrainer:
     
     def run(self):
         train_dataset,test_dataset,dkeyid2idx=self.load_TFdataset()
-        train_summary_writer, test_summary_writer = self.make_tensorboard_summary_writer()
-
         
-        self.train_test(train_dataset,test_dataset,train_summary_writer,test_summary_writer)
+        self.train_test(train_dataset,test_dataset)
         self.Make_embedding_projector(dkeyid2idx)
 
 
@@ -305,7 +322,7 @@ if __name__ == "__main__":
     parser.add_argument('--eos_token', type=int, required=False, default=2)
     parser.add_argument('--batch_size', type=int, required=False, default=65)
     parser.add_argument('--tgt_len', type=int, required=False, default=140)
-    parser.add_argument('--mem_len', type=int, required=False,default=600,help='Length of the retained previous heads')
+    parser.add_argument('--mem_len', type=int, required=False,default=400,help='Length of the retained previous heads')
     parser.add_argument('--n_head', type=int, required=False, default=8,help='Number of attention heads')
     parser.add_argument('--n_layer', type=int, required=False, default=4, help='Number of hidden layers in the Transformer encoder')
     parser.add_argument('--C_vocab_size', type=int, required=False, default=188,help='how many concepts')
@@ -315,17 +332,54 @@ if __name__ == "__main__":
     parser.add_argument('--mode', type=str, required=False, default='concepts',help='concepts or questions')
     parser.add_argument('--tf_data_dir', type=str, required=False, default='/home/jun/workspace/KT/data/ednet/TF_DATA1')
     parser.add_argument('--devices', type=str, required=False, default='gpu')
-    parser.add_argument('--tensorboard_log_dir', type=str, required=False, default='/home/jun/workspace/KT/logs/gradient_tape')
     parser.add_argument('--tensorboard_emb_log_dir', type=str, required=False, default='/home/jun/workspace/KT/logs/embedding',help='tensorboard embedding projection dictionary')
-    parser.add_argument('--model_save_dir', type=str, required=False, default='/home/jun/workspace/KT/Tensorflow_Lite_save_dir')
+    parser.add_argument('--mlflow_set_experiment', type=str, required=False, default='TFlite',help='Determine which experiment in the mlflow to record the models training records')
+    parser.add_argument('--registered_model_name', type=str, required=False, default='TFlite',help='The registry name on which the model will be stored')
     args = parser.parse_args()
-
+    
+    
+    
     if args.devices == 'cpu':
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
     else:
         os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
-    main(args)
-    
+
+ 
+    # Create a new MLflow Experiment
+    mlflow.set_experiment(args.mlflow_set_experiment)
+
+    params = {
+    "d_embed": args.d_embed,
+    "d_head": args.d_head,
+    "d_model": args.d_model,
+    "n_head": args.n_head,
+    "n_layer": args.n_layer,
+    "eos_token": args.eos_token,
+    "mask_token": args.mask_token,
+    "batch_size": args.batch_size,
+    "tgt_len": args.tgt_len,
+    "Concepts_size": args.C_vocab_size,
+    "Questions_size": args.Q_vocab_size,
+    "epoch": args.epoch,
+    "mode": args.mode,
+    "mem_len": args.mem_len
+}
+
+
+    # Start an MLflow run
+    with mlflow.start_run():
+        #set a run name
+        mlflow.set_tag("mlflow.runName", '{}ep_{}mem_{}'.format(args.epoch,args.mem_len, args.mode))
+        
+        # Set a tag that we can use to remind ourselves what this run was for
+        mlflow.set_tag("Training Info", '{}ep_{}mem_{}'.format(args.epoch,args.mem_len, args.mode))
+
+        # Log the hyperparameters
+        mlflow.log_params(params)
+        # mlflow.tensorflow.autolog()
+
+
+        main(args)    
     
